@@ -3,6 +3,7 @@
     "app1a.js",
     "app1b.js",
     "compat.js",
+    "fix-data.js",
     "app2a.js",
     "app2b.js",
     "app3.js",
@@ -14,7 +15,7 @@
   try {
     const source = [];
     for (const part of parts) {
-      const response = await fetch(`./${part}?v=4`, { cache: "no-store" });
+      const response = await fetch(`./${part}?v=5`, { cache: "no-store" });
       if (!response.ok) throw new Error(`${part}: HTTP ${response.status}`);
       source.push(await response.text());
     }
