@@ -9,13 +9,14 @@
     "app3.js",
     "app4.js",
     "app5.js",
+    "online-v2.js",
     "result-guard.js"
   ];
 
   try {
     const source = [];
     for (const part of parts) {
-      const response = await fetch(`./${part}?v=5`, { cache: "no-store" });
+      const response = await fetch(`./${part}?v=6`, { cache: "no-store" });
       if (!response.ok) throw new Error(`${part}: HTTP ${response.status}`);
       source.push(await response.text());
     }
