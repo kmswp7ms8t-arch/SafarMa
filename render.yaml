@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: safarma-belink-ai
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./belink-ai-v2/backend/Dockerfile
+    dockerContext: ./belink-ai-v2/backend
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BELINK_AI_MODEL
+        value: gpt-5-mini
+      - key: BELINK_REQUIRE_AI
+        value: "true"
+      - key: BELINK_CORS_ORIGINS
+        value: https://kmswp7ms8t-arch.github.io
+      - key: BELINK_RATE_LIMIT
+        value: "30"
+      - key: BELINK_RATE_WINDOW_SECONDS
+        value: "60"
+      - key: BELINK_AI_DATABASE
+        value: /var/data/belink_ai.sqlite3
+    disk:
+      name: safarma-belink-ai-data
+      mountPath: /var/data
+      sizeGB: 1
