@@ -5,8 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8421
 
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
-RUN pip install --no-cache-dir uv && uv sync --frozen --no-dev
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir uv && uv sync --no-dev
 COPY . .
 RUN mkdir -p /app/data
 EXPOSE 8421
