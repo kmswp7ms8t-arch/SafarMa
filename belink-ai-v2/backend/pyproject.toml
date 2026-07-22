@@ -1,0 +1,18 @@
+[project]
+name = "belink-ai-travel-core"
+version = "0.2.0"
+description = "Belink AI Travel Intelligence core for Amir and Sanaz"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn>=0.34.0",
+  "pydantic>=2.10.0",
+  "openai-agents>=0.18.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "httpx>=0.28.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
