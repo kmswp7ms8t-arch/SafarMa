@@ -1,0 +1,50 @@
+name: SafarMa Frontend CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "index.html"
+      - "app.html"
+      - "*.js"
+      - "*.css"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "index.html"
+      - "app.html"
+      - "*.js"
+      - "*.css"
+      - ".github/workflows/frontend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build the loader script in browser order
+        run: |
+          cat app1a.js app1b.js compat.js fix-data.js app2a.js app2b.js app3.js app4.js app5.js online-v2.js belink-ai.js result-guard.js > /tmp/safarma-combined.js
+      - name: Validate JavaScript syntax
+        run: |
+          node --check /tmp/safarma-combined.js
+          node --check safarma-specialists-v8.js
+          node --check belink-connected.js
+          node --check loader.js
+          node --check sw.js
+      - name: Check required release references
+        run: |
+          grep -q 'belink-connected.js' index.html
+          grep -q 'safarma-specialists-v8.js' index.html
+          grep -q 'safarma-final-v8.css' index.html
+          grep -q 'belink-connected.js' sw.js
+      - name: Ensure frontend contains no OpenAI secret
+        run: |
+          ! grep -R --exclude-dir=.git --exclude='*.md' --exclude='.env.example' -E 'sk-proj-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY=' .
