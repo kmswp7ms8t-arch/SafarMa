@@ -7,6 +7,7 @@ on:
       - "index.html"
       - "app.html"
       - "public.html"
+      - "pricing.html"
       - "belink-ai-v2/**"
       - "scripts/**"
       - "*.js"
@@ -62,7 +63,7 @@ jobs:
           rm -rf "$ROOT"
           mkdir -p "$ROOT/frontend" "$ROOT/backend" "$ROOT/docs" "$ROOT/scripts" "$ROOT/workflows"
 
-          cp index.html app.html public.html legal.html plans.html manifest.webmanifest manifest-public.webmanifest icon.svg sw.js "$ROOT/frontend/"
+          cp index.html app.html public.html pricing.html legal.html plans.html manifest.webmanifest manifest-public.webmanifest icon.svg sw.js "$ROOT/frontend/"
           cp styles.css online-v2.css belink-ai.css safarma-final-v8.css "$ROOT/frontend/"
           cp loader.js compat.js fix-data.js result-guard.js "$ROOT/frontend/"
           cp app1a.js app1b.js app2a.js app2b.js app3.js app4.js app5.js "$ROOT/frontend/"
@@ -99,6 +100,7 @@ jobs:
 
           - \`frontend/index.html\`: personal gift edition for Amir and Sanaz, including the optional Trabzon preset.
           - \`frontend/public.html\`: general public/business edition with neutral onboarding and no personal birthday or preset content.
+          - \`frontend/pricing.html\`: pilot business plans and payment-readiness notice.
 
           ## Folders
 
@@ -127,6 +129,7 @@ jobs:
               'editions': {
                   'personal': 'frontend/index.html',
                   'public': 'frontend/public.html',
+                  'pricing': 'frontend/pricing.html',
               },
               'file_count_excluding_sha256sums': len(files_with_manifest),
               'files_excluding_sha256sums': files_with_manifest,
