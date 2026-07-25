@@ -14,6 +14,7 @@ from agent import (
     deterministic_fallback,
     enforce_decision_policy,
 )
+from auth import issue_client_token, validate_client_token
 
 
 def source(title, url, classification="official"):
@@ -52,6 +53,16 @@ def profile(language="fa", budget=13500):
     return TravelProfile(origin="DOH", destination_candidates=["Trabzon", "Tbilisi"], passport="Iran", departure_date="2026-08-06", return_date="2026-08-11", travelers=2, budget_qar=budget, language=language)
 
 
+def build_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("BELINK_AI_DATABASE", str(tmp_path / "api.sqlite3"))
+    monkeypatch.setenv("BELINK_SESSION_SECRET", "test-secret-that-is-stable-and-private")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("BELINK_ENV", raising=False)
+    import main
+    importlib.reload(main)
+    return TestClient(main.app)
+
+
 def test_feasible_requires_critical_sources():
     result = enforce_decision_policy(decision([finding("Belink Budget Controller")]))
     assert result.verdict == "needs_verification"
@@ -84,16 +95,67 @@ def test_over_budget_offline_result_is_not_feasible():
     assert deterministic_fallback(profile(language="en", budget=1000)).verdict == "not_feasible"
 
 
-def test_health_ready_analyze_and_chat(tmp_path):
-    os.environ["BELINK_AI_DATABASE"] = str(tmp_path / "api.sqlite3")
-    os.environ.pop("OPENAI_API_KEY", None)
+def test_signed_client_token_round_trip(monkeypatch):
+    monkeypatch.setenv("BELINK_SESSION_SECRET", "unit-test-secret")
+    issued = issue_client_token()
+    validated = validate_client_token(issued.token)
+    assert validated is not None
+    assert validated.client_id == issued.client_id
+    assert validate_client_token(issued.token + "tampered") is None
+
+
+def test_health_ready_analyze_and_chat(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    assert client.get("/health").status_code == 200
+    assert client.get("/ready").status_code == 200
+    analyzed_response = client.post("/api/belink-ai/analyze", json=profile().model_dump())
+    assert analyzed_response.status_code == 200
+    analyzed = analyzed_response.json()
+    assert analyzed["mode"] == "offline"
+    assert validate_client_token(analyzed["client_token"]) is not None
+    headers = {"X-Belink-Client": analyzed["client_token"]}
+    answer = client.post(
+        "/api/belink-ai/chat",
+        headers=headers,
+        json={"session_id": analyzed["session_id"], "question": "ویزا و پاسپورت چطور؟"},
+    )
+    assert answer.status_code == 200
+    assert answer.json()["session_id"] == analyzed["session_id"]
+    assert answer.json()["client_token"] == analyzed["client_token"]
+
+
+def test_private_endpoints_require_valid_client(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    assert client.get("/api/belink-ai/memory").status_code == 401
+    assert client.get("/api/belink-ai/trips").status_code == 401
+    assert client.get("/api/belink-ai/trips", headers={"X-Belink-Client": "invalid"}).status_code == 401
+
+
+def test_client_trip_isolation(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    first = client.post("/api/belink-ai/analyze", json=profile().model_dump()).json()
+    second = client.post("/api/belink-ai/analyze", json=profile(language="en").model_dump()).json()
+    first_headers = {"X-Belink-Client": first["client_token"]}
+    second_headers = {"X-Belink-Client": second["client_token"]}
+    first_trips = client.get("/api/belink-ai/trips", headers=first_headers).json()["trips"]
+    second_trips = client.get("/api/belink-ai/trips", headers=second_headers).json()["trips"]
+    assert len(first_trips) == 1
+    assert len(second_trips) == 1
+    assert first_trips[0]["id"] != second_trips[0]["id"]
+    assert client.delete(f"/api/belink-ai/trips/{first_trips[0]['id']}", headers=second_headers).status_code == 404
+
+
+def test_production_readiness_requires_persistent_secret(tmp_path, monkeypatch):
+    monkeypatch.setenv("BELINK_AI_DATABASE", str(tmp_path / "ready.sqlite3"))
+    monkeypatch.setenv("BELINK_ENV", "production")
+    monkeypatch.delenv("BELINK_SESSION_SECRET", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("BELINK_REQUIRE_AI", "false")
     import main
     importlib.reload(main)
     client = TestClient(main.app)
-    assert client.get("/health").status_code == 200
+    assert client.get("/ready").status_code == 503
+    monkeypatch.setenv("BELINK_SESSION_SECRET", "production-test-secret")
+    importlib.reload(main)
+    client = TestClient(main.app)
     assert client.get("/ready").status_code == 200
-    analyzed = client.post("/api/belink-ai/analyze", json=profile().model_dump()).json()
-    assert analyzed["mode"] == "offline"
-    answer = client.post("/api/belink-ai/chat", json={"session_id": analyzed["session_id"], "question": "ویزا و پاسپورت چطور؟"})
-    assert answer.status_code == 200
-    assert answer.json()["session_id"] == analyzed["session_id"]
