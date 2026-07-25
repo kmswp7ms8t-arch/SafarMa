@@ -75,15 +75,20 @@ jobs:
       - name: Ensure exported local snapshot never contains the signed token value
         run: |
           python - <<'PY'
-          import pathlib
+          import pathlib, re
           text = pathlib.Path('privacy-controls.js').read_text(encoding='utf-8')
           start = text.index('function localSnapshot()')
           end = text.index('function showToast', start)
           block = text[start:end]
-          if 'safeGet(CLIENT_STORAGE)' in block:
+          forbidden_assignments = [
+              r'client_token\s*:',
+              r'signed_client_token\s*:',
+              r'client_identity\s*:\s*safeGet\(CLIENT_STORAGE\)'
+          ]
+          if any(re.search(pattern, block) for pattern in forbidden_assignments):
               raise SystemExit('The local export snapshot must not contain the raw signed client token.')
-          if 'signed_client_identity_present' not in block:
-              raise SystemExit('Expected a boolean identity-presence indicator in the export snapshot.')
+          if 'signed_client_identity_present' not in block or 'Boolean(safeGet(CLIENT_STORAGE))' not in block:
+              raise SystemExit('Expected only a boolean identity-presence indicator in the export snapshot.')
           PY
       - name: Ensure deployable frontend contains no secret
         run: |
