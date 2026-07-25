@@ -2,7 +2,7 @@
 
 Version: **8.5.0 · V16**
 
-Release commit: pending merge and final CI
+Release commit: `2775ac4b04278a90d35a7cc4489d2da930f7bc56`
 
 ## Completed
 
@@ -22,7 +22,10 @@ Release commit: pending merge and final CI
 - Privacy export and complete deletion remain available.
 - No OpenAI secret or raw signed client token is embedded in public files.
 - Production verification supports both V16 editions.
-- The downloadable V16 bundle includes frontend, backend, SEO files, verification scripts and checksums.
+- Frontend V16 CI passed JavaScript, both manifests, sitemap XML, personal/public separation, SEO, launch-safe UX, privacy controls and secret scans.
+- Backend CI passed Python 3.11 and 3.13 tests, readiness smoke checks, production-verifier compilation and Docker production build.
+- The V16 release bundle passed secret scanning, assembly, checksums and independent ZIP verification.
+- The verified release package contains 63 files excluding the checksum index.
 
 ## Frontend editions
 
