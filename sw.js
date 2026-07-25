@@ -30,6 +30,7 @@ const ASSETS = [
   "./public-mode.js?v=1",
   "./legal.html",
   "./plans.html",
+  "./pricing.html",
   "./manifest.webmanifest?v=15",
   "./manifest-public.webmanifest?v=15",
   "./icon.svg"
@@ -69,6 +70,7 @@ self.addEventListener("fetch", (event) => {
           if (exact) return exact;
           if (url.pathname.endsWith("/public.html")) return caches.match("./public.html");
           if (url.pathname.endsWith("/app.html")) return caches.match("./app.html");
+          if (url.pathname.endsWith("/pricing.html")) return caches.match("./pricing.html");
           return caches.match("./index.html");
         })
     );
