@@ -1,5 +1,6 @@
 import importlib
 import os
+import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +16,7 @@ from agent import (
     enforce_decision_policy,
 )
 from auth import issue_client_token, validate_client_token
+from memory import MemoryStore
 
 
 def source(title, url, classification="official"):
@@ -143,6 +145,62 @@ def test_client_trip_isolation(tmp_path, monkeypatch):
     assert len(second_trips) == 1
     assert first_trips[0]["id"] != second_trips[0]["id"]
     assert client.delete(f"/api/belink-ai/trips/{first_trips[0]['id']}", headers=second_headers).status_code == 404
+
+
+def test_cross_client_cannot_take_over_conversation(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    first = client.post("/api/belink-ai/analyze", json=profile().model_dump()).json()
+    second = client.post("/api/belink-ai/analyze", json=profile(language="en").model_dump()).json()
+    first_headers = {"X-Belink-Client": first["client_token"]}
+    second_headers = {"X-Belink-Client": second["client_token"]}
+
+    attempted_takeover = client.post(
+        "/api/belink-ai/chat",
+        headers=second_headers,
+        json={
+            "session_id": first["session_id"],
+            "profile": profile(language="en").model_dump(),
+            "question": "Can I use this session?",
+        },
+    )
+    assert attempted_takeover.status_code == 200
+    assert attempted_takeover.json()["session_id"] != first["session_id"]
+
+    original_owner = client.post(
+        "/api/belink-ai/chat",
+        headers=first_headers,
+        json={"session_id": first["session_id"], "question": "هنوز همان جلسه است؟"},
+    )
+    assert original_owner.status_code == 200
+    assert original_owner.json()["session_id"] == first["session_id"]
+
+
+def test_rc2_conversation_schema_migrates_before_index_creation(tmp_path):
+    database = tmp_path / "rc2.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.executescript("""
+            CREATE TABLE conversations (
+                session_id TEXT PRIMARY KEY,
+                profile_json TEXT NOT NULL,
+                decision_json TEXT,
+                messages_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO conversations(session_id, profile_json, decision_json, messages_json, updated_at)
+            VALUES ('legacy-session', '{}', NULL, '[]', '2026-07-22T00:00:00Z');
+        """)
+
+    store = MemoryStore(str(database))
+    assert store.ready()
+    with sqlite3.connect(database) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(conversations)")}
+        indexes = {row[1] for row in connection.execute("PRAGMA index_list(conversations)")}
+        owner = connection.execute(
+            "SELECT user_id FROM conversations WHERE session_id = 'legacy-session'"
+        ).fetchone()[0]
+    assert "user_id" in columns
+    assert "idx_conversations_user_updated" in indexes
+    assert owner == "legacy"
 
 
 def test_production_readiness_requires_persistent_secret(tmp_path, monkeypatch):
