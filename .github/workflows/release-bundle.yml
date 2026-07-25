@@ -32,7 +32,6 @@ jobs:
         run: |
           python - <<'PY'
           import pathlib, re
-          roots = [pathlib.Path('.'), pathlib.Path('belink-ai-v2/backend')]
           patterns = [
               re.compile(r'sk-proj-[A-Za-z0-9_-]{20,}'),
               re.compile(r'sk-[A-Za-z0-9]{32,}'),
@@ -74,11 +73,19 @@ jobs:
           find "$ROOT/backend" -type d -name '__pycache__' -prune -exec rm -rf {} + || true
           find "$ROOT/backend" -type f \( -name '*.sqlite3' -o -name '*.db' -o -name '.env' -o -name '.env.local' \) -delete
 
-          cp README.md DEPLOY_NOW.md FINAL_PRODUCTION_STATUS.md render.yaml "$ROOT/docs/"
+          for file in README.md DEPLOY_NOW.md FINAL_PRODUCTION_STATUS.md render.yaml; do
+            if [ -f "$file" ]; then cp "$file" "$ROOT/docs/"; fi
+          done
           cp release/STATUS.md "$ROOT/docs/RELEASE_STATUS.md"
           cp -R scripts/. "$ROOT/scripts/"
-          cp .github/workflows/pages.yml .github/workflows/frontend-ci.yml .github/workflows/belink-ai-ci.yml "$ROOT/workflows/"
-          cp .github/workflows/production-verify.yml .github/workflows/backend-image.yml "$ROOT/workflows/"
+          for file in \
+            .github/workflows/frontend-ci.yml \
+            .github/workflows/belink-ai-ci.yml \
+            .github/workflows/production-verify.yml \
+            .github/workflows/backend-image.yml \
+            .github/workflows/release-bundle.yml; do
+            if [ -f "$file" ]; then cp "$file" "$ROOT/workflows/"; fi
+          done
 
           cat > "$ROOT/README_FIRST.md" <<EOF
           # SafarMa RC4 V13 Release
@@ -93,7 +100,7 @@ jobs:
           - \`backend/\`: FastAPI + OpenAI Agents SDK server.
           - \`docs/\`: deployment, production and release status.
           - \`scripts/\`: production verification tooling.
-          - \`workflows/\`: CI, Pages, image and production-verification workflows.
+          - \`workflows/\`: CI, image, release and production-verification workflows.
 
           ## Security
 
