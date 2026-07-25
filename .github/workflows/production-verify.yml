@@ -1,0 +1,56 @@
+name: Verify SafarMa production
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: "Deployed Belink AI HTTPS base URL"
+        required: true
+        type: string
+      frontend_url:
+        description: "SafarMa public URL"
+        required: true
+        default: "https://kmswp7ms8t-arch.github.io/SafarMa/?v=13"
+        type: string
+      privacy_smoke:
+        description: "Run one connected analysis, export its temporary data, then delete it"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safarma-production-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile verification script
+        run: python -m py_compile scripts/verify-production.py
+      - name: Verify without invoking AI
+        if: ${{ !inputs.privacy_smoke }}
+        env:
+          BACKEND_URL: ${{ inputs.backend_url }}
+          FRONTEND_URL: ${{ inputs.frontend_url }}
+        run: python scripts/verify-production.py --frontend "$FRONTEND_URL" --backend "$BACKEND_URL"
+      - name: Verify with disposable privacy smoke test
+        if: ${{ inputs.privacy_smoke }}
+        env:
+          BACKEND_URL: ${{ inputs.backend_url }}
+          FRONTEND_URL: ${{ inputs.frontend_url }}
+        run: python scripts/verify-production.py --frontend "$FRONTEND_URL" --backend "$BACKEND_URL" --privacy-smoke
+      - name: Publish result summary
+        if: always()
+        run: |
+          echo "## SafarMa production verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend: ${{ inputs.frontend_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Backend host supplied: yes" >> "$GITHUB_STEP_SUMMARY"
+          echo "Disposable AI/privacy smoke requested: ${{ inputs.privacy_smoke }}" >> "$GITHUB_STEP_SUMMARY"
