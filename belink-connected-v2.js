@@ -1,9 +1,9 @@
 (() => {
   "use strict";
-  // SafarMa connected release connector v2.
 
   const STORAGE_API = "belink-ai-api-base";
   const STORAGE_SESSION = "belink-ai-session-id";
+  const config = window.BELINK_AI_CONFIG || {};
   const qs = (selector, root = document) => root.querySelector(selector);
   const qsa = (selector, root = document) => [...root.querySelectorAll(selector)];
   const isFa = () => document.documentElement.lang === "fa" || document.documentElement.dir === "rtl";
@@ -18,26 +18,36 @@
   let sessionId = "";
   let connectedPanel = null;
   let initialized = false;
-  let lastAutoSignature = "";
   let analysisInFlight = false;
+  let lastAutoSignature = "";
 
   function safeStorageGet(key) {
     try { return localStorage.getItem(key) || ""; } catch (_) { return ""; }
   }
+
   function safeStorageSet(key, value) {
-    try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch (_) {}
+    try {
+      if (value) localStorage.setItem(key, value);
+      else localStorage.removeItem(key);
+    } catch (_) {}
   }
+
   function normalizeBase(value = "") {
     const text = clean(value).replace(/\/+$/, "");
     if (!text) return "";
     try {
       const url = new URL(text);
-      return /^https?:$/.test(url.protocol) ? url.origin + url.pathname.replace(/\/$/, "") : "";
+      const local = ["localhost", "127.0.0.1"].includes(url.hostname);
+      if (url.protocol !== "https:" && !(local && url.protocol === "http:")) return "";
+      return `${url.origin}${url.pathname.replace(/\/$/, "")}`;
     } catch (_) { return ""; }
   }
+
   function resolveApiBase() {
     const query = new URLSearchParams(location.search).get("api");
-    const configured = normalizeBase(query || window.BELINK_AI_CONFIG?.apiBase || window.BELINK_AI_API_BASE || safeStorageGet(STORAGE_API));
+    const configured = normalizeBase(
+      query || config.apiBase || window.BELINK_AI_API_BASE || safeStorageGet(STORAGE_API)
+    );
     if (query && configured) safeStorageSet(STORAGE_API, configured);
     apiBase = configured;
     sessionId = safeStorageGet(STORAGE_SESSION);
@@ -45,39 +55,38 @@
   }
 
   function addDays(dateString, days) {
-    const date = new Date(`${dateString || new Date().toISOString().slice(0, 10)}T12:00:00`);
+    const fallback = new Date().toISOString().slice(0, 10);
+    const date = new Date(`${dateString || fallback}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return fallback;
     date.setDate(date.getDate() + Math.max(0, Number(days || 1) - 1));
     return date.toISOString().slice(0, 10);
   }
 
+  function appState() {
+    try { return typeof p === "object" && p ? p : {}; } catch (_) { return {}; }
+  }
+
+  function appResult() {
+    try { return typeof result === "object" && result ? result : {}; } catch (_) { return {}; }
+  }
+
   function getDestinationNames() {
     const values = [];
-    try {
-      String(p?.wanted || "").split(/[,،\n]/).forEach((item) => { if (clean(item)) values.push(clean(item)); });
-      const rows = [result?.practical, ...(result?.alts || [])];
-      rows.forEach((item) => {
-        const name = clean(item?.en || item?.fa || item?.country || "");
-        if (name) values.push(name);
-      });
-    } catch (_) {}
+    const state = appState();
+    const current = appResult();
+    String(state.wanted || "").split(/[,،\n]/).forEach((item) => {
+      const value = clean(item);
+      if (value) values.push(value);
+    });
+    [current.practical, ...(current.alts || [])].forEach((item) => {
+      const value = clean(item?.en || item?.fa || item?.country || "");
+      if (value) values.push(value);
+    });
     return [...new Set(values.map((item) => item.slice(0, 120)))].slice(0, 8);
   }
 
-  function normalizedFlight(value) {
-    return ({ direct: "direct", prefer: "prefer_direct", stop: "one_stop", any: "any" })[value] || "prefer_direct";
-  }
-  function normalizedStay(value) {
-    return ({ three: "3-star hotel", four: "4-star hotel", five: "5-star hotel", apartment: "apartment", resort: "resort" })[value] || "4-star hotel";
-  }
-  function normalizedTransport(value) {
-    return ({ car: "rental car", needed: "only if needed", none: "no car", driver: "private driver" })[value] || "only if needed";
-  }
-  function normalizedFood(value) {
-    return ({ budget: "budget", balanced: "balanced", premium: "restaurant-focused" })[value] || "balanced";
-  }
-
   function buildProfile() {
-    const state = typeof p === "object" && p ? p : {};
+    const state = appState();
     const start = state.start || new Date().toISOString().slice(0, 10);
     const days = Math.max(1, Number(state.days || 6));
     return {
@@ -93,16 +102,16 @@
       travelers: Math.max(1, Number(state.adults || 2) + Number(state.children || 0)),
       budget_qar: Math.max(1, Number(state.budget || 13000)),
       trip_style: Array.isArray(state.styles) ? state.styles.slice(0, 8) : [],
-      flight_preference: normalizedFlight(state.flight),
-      accommodation: normalizedStay(state.stay),
-      transport_preference: normalizedTransport(state.transport),
-      food_preference: normalizedFood(state.food),
+      flight_preference: ({ direct: "direct", prefer: "prefer_direct", stop: "one_stop", any: "any" })[state.flight] || "prefer_direct",
+      accommodation: ({ three: "3-star hotel", four: "4-star hotel", five: "5-star hotel", apartment: "apartment", resort: "resort" })[state.stay] || "4-star hotel",
+      transport_preference: ({ car: "rental car", needed: "only if needed", none: "no car", driver: "private driver" })[state.transport] || "only if needed",
+      food_preference: ({ budget: "budget", balanced: "balanced", premium: "restaurant-focused" })[state.food] || "balanced",
       halal_required: state.halal !== false,
       language: isFa() ? "fa" : "en"
     };
   }
 
-  async function request(path, options = {}, timeoutMs = 45000) {
+  async function request(path, options = {}, timeoutMs = config.requestTimeoutMs || 90000) {
     if (!apiBase) throw new Error(isFa() ? "آدرس سرور Belink AI تنظیم نشده است." : "Belink AI backend is not configured.");
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -119,20 +128,25 @@
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.detail || data.message || `HTTP ${response.status}`);
       return data;
-    } finally { clearTimeout(timer); }
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(isFa() ? "زمان پاسخ سرور تمام شد؛ دوباره تلاش کن." : "The server timed out; please retry.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function checkHealth() {
     if (!apiBase) return null;
     try {
-      health = await request("/health", { method: "GET", headers: {} }, 10000);
-      updateConnectionBadges();
-      return health;
+      health = await request(config.healthPath || "/health", { method: "GET", headers: {} }, 10000);
     } catch (_) {
       health = null;
-      updateConnectionBadges();
-      return null;
     }
+    updateConnectionBadges();
+    return health;
   }
 
   function modeLabel(mode) {
@@ -149,33 +163,18 @@
       const label = qs("span", row) || row;
       label.textContent = modeLabel(connected && health?.ai_connected ? "connected" : "offline");
     });
+
     let badge = qs("#belinkBackendBadge");
     if (!badge) {
       badge = document.createElement("button");
       badge.id = "belinkBackendBadge";
       badge.type = "button";
       badge.className = "belink-backend-badge";
-      document.body.appendChild(badge);
       badge.addEventListener("click", openBackendSetup);
+      document.body.appendChild(badge);
     }
     badge.className = `belink-backend-badge ${connected ? (health?.ai_connected ? "is-connected" : "is-offline") : "is-unconfigured"}`;
     badge.innerHTML = `<i></i><span>${esc(modeLabel(connected && health?.ai_connected ? "connected" : "offline"))}</span>`;
-  }
-
-  function openBackendSetup() {
-    const current = apiBase || "";
-    const value = prompt(isFa()
-      ? "آدرس HTTPS سرور Belink AI را وارد کن. کلید API هرگز اینجا وارد نمی‌شود."
-      : "Enter the HTTPS Belink AI backend URL. Never enter an API key here.", current);
-    if (value === null) return;
-    const normalized = normalizeBase(value);
-    apiBase = normalized;
-    safeStorageSet(STORAGE_API, normalized);
-    health = null;
-    checkHealth().then(autoAnalyzeIfReady);
-    showToast(normalized
-      ? (isFa() ? "آدرس سرور ذخیره شد." : "Backend URL saved.")
-      : (isFa() ? "حالت آفلاین فعال شد." : "Offline mode enabled."));
   }
 
   function showToast(message) {
@@ -184,19 +183,55 @@
     toast.className = "belink-connect-toast";
     toast.textContent = message;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2600);
+    setTimeout(() => toast.remove(), 3000);
+  }
+
+  function openBackendSetup() {
+    const value = prompt(
+      isFa()
+        ? "آدرس HTTPS سرور Belink AI را وارد کن. کلید API هرگز اینجا وارد نمی‌شود."
+        : "Enter the HTTPS Belink AI backend URL. Never enter an API key here.",
+      apiBase || ""
+    );
+    if (value === null) return;
+    const normalized = normalizeBase(value);
+    if (value.trim() && !normalized) {
+      showToast(isFa() ? "آدرس باید HTTPS معتبر باشد." : "Enter a valid HTTPS backend URL.");
+      return;
+    }
+    apiBase = normalized;
+    safeStorageSet(STORAGE_API, normalized);
+    health = null;
+    checkHealth().then(() => {
+      if (config.autoAnalyze === true) autoAnalyzeIfReady();
+    });
+    showToast(normalized
+      ? (isFa() ? "آدرس سرور ذخیره شد. تحلیل فقط با دکمه شما اجرا می‌شود." : "Backend URL saved. Analysis runs only when you press the button.")
+      : (isFa() ? "حالت آفلاین فعال شد." : "Offline mode enabled."));
+  }
+
+  function safeSourceUrl(value) {
+    try {
+      const url = new URL(value);
+      return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+    } catch (_) { return ""; }
   }
 
   function sourceCards(sources = []) {
-    const valid = sources.filter((item) => item?.url).slice(0, 10);
-    if (!valid.length) return `<p class="bc-muted">${isFa() ? "منبع آنلاین قابل‌نمایش دریافت نشد." : "No displayable online source was returned."}</p>`;
-    return `<div class="bc-sources">${valid.map((item) => `<a href="${esc(item.url)}" target="_blank" rel="noopener"><b>${esc(item.title || "Source")}</b><small>${esc(item.classification || item.source_type || "source")} · ${esc(item.verification_status || "unknown")}</small></a>`).join("")}</div>`;
+    const valid = sources
+      .map((item) => ({ ...item, url: safeSourceUrl(item?.url) }))
+      .filter((item) => item.url)
+      .slice(0, 10);
+    if (!valid.length) {
+      return `<p class="bc-muted">${isFa() ? "منبع آنلاین قابل‌نمایش دریافت نشد." : "No displayable online source was returned."}</p>`;
+    }
+    return `<div class="bc-sources">${valid.map((item) => `<a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(item.title || "Source")}</b><small>${esc(item.classification || item.source_type || "source")} · ${esc(item.verification_status || "unknown")}</small></a>`).join("")}</div>`;
   }
 
   function findingLabel(value = "unknown") {
-    const mapFa = { good: "مناسب", conditional: "مشروط", blocked: "مانع", unknown: "نامشخص" };
-    const mapEn = { good: "Good", conditional: "Conditional", blocked: "Blocked", unknown: "Unknown" };
-    return (isFa() ? mapFa : mapEn)[value] || value;
+    const fa = { good: "مناسب", conditional: "مشروط", blocked: "مانع", unknown: "نامشخص" };
+    const en = { good: "Good", conditional: "Conditional", blocked: "Blocked", unknown: "Unknown" };
+    return (isFa() ? fa : en)[value] || value;
   }
 
   function verdictLabel(value = "needs_verification") {
@@ -230,10 +265,11 @@
       <small class="bc-checked">${isFa() ? "زمان بررسی" : "Checked at"}: ${esc(decision.checked_at || new Date().toISOString())}</small>`;
     hero.insertAdjacentElement("afterend", panel);
     connectedPanel = panel;
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function analyzeWithBelink(trigger = null, { automatic = false } = {}) {
+    if (automatic && config.autoAnalyze !== true) return;
     if (analysisInFlight) return;
     if (!apiBase) {
       if (automatic) return;
@@ -248,10 +284,10 @@
       button.textContent = isFa() ? "در حال تحلیل واقعی…" : "Running connected analysis…";
     }
     try {
-      const data = await request("/api/belink-ai/analyze", {
+      const data = await request(config.analyzePath || "/api/belink-ai/analyze", {
         method: "POST",
         body: JSON.stringify(buildProfile())
-      }, 90000);
+      });
       renderConnectedDecision(data);
       health = { ...(health || {}), ai_connected: data.mode === "connected" };
       updateConnectionBadges();
@@ -271,7 +307,7 @@
 
   async function chatWithBelink(question) {
     if (!apiBase) throw new Error(isFa() ? "سرور Belink AI تنظیم نشده است." : "Belink AI backend is not configured.");
-    const data = await request("/api/belink-ai/chat", {
+    const data = await request(config.chatPath || "/api/belink-ai/chat", {
       method: "POST",
       body: JSON.stringify({
         session_id: sessionId || null,
@@ -288,9 +324,8 @@
   }
 
   function enhanceDrawer() {
-    const root = qs("#belinkAiRoot");
     const drawer = qs("#belinkAiDrawer");
-    if (!root || !drawer || drawer.dataset.connectedEnhanced === "1") return;
+    if (!drawer || drawer.dataset.connectedEnhanced === "1") return;
     drawer.dataset.connectedEnhanced = "1";
     const status = qs("#belinkAiStatus", drawer);
     status?.insertAdjacentHTML("afterend", `<button class="bc-analyze-button" id="belinkConnectedAnalyzeDrawer">${isFa() ? "تحلیل با Belink Commander" : "Analyze with Belink Commander"}</button>`);
@@ -301,7 +336,7 @@
     const answer = qs("#belinkAiAnswer");
     const connectedSend = async (question) => {
       const text = clean(question);
-      if (!text || !apiBase) return;
+      if (!text || !apiBase || !answer) return;
       answer.innerHTML = `<b>Belink Commander</b><p>${isFa() ? "در حال بررسی زمینه سفر…" : "Reviewing your trip context…"}</p>`;
       try {
         const response = await chatWithBelink(text);
@@ -312,6 +347,7 @@
         answer.innerHTML = `<b>Belink Commander</b><p>${esc(isFa() ? "اتصال کامل نشد؛ پاسخ محلی قبلی همچنان قابل استفاده است." : "Connected answer failed; the existing local answer remains available.")}</p><small>${esc(clean(error.message))}</small>`;
       }
     };
+
     send?.addEventListener("click", (event) => {
       if (!apiBase) return;
       event.stopImmediatePropagation();
@@ -352,6 +388,7 @@
   }
 
   async function autoAnalyzeIfReady() {
+    if (config.autoAnalyze !== true) return;
     if (!apiBase || !health || analysisInFlight || connectedPanel || !qs(".resultHero,.result-hero")) return;
     const signature = profileSignature();
     if (!signature || signature === lastAutoSignature) return;
@@ -364,7 +401,7 @@
     if (!container || qs(".safarma-business-links", container)) return;
     const links = document.createElement("div");
     links.className = "safarma-business-links";
-    links.innerHTML = `<a href="./plans.html">${isFa() ? "پلن‌ها" : "Plans"}</a><a href="./legal.html">${isFa() ? "شرایط و حریم خصوصی" : "Terms & privacy"}</a><a href="https://github.com/kmswp7ms8t-arch/SafarMa/issues" target="_blank" rel="noopener">${isFa() ? "پشتیبانی فنی" : "Technical support"}</a>`;
+    links.innerHTML = `<a href="./plans.html">${isFa() ? "پلن‌ها" : "Plans"}</a><a href="./legal.html">${isFa() ? "شرایط و حریم خصوصی" : "Terms & privacy"}</a><a href="https://github.com/kmswp7ms8t-arch/SafarMa/issues" target="_blank" rel="noopener noreferrer">${isFa() ? "پشتیبانی فنی" : "Technical support"}</a>`;
     container.appendChild(links);
   }
 
@@ -393,18 +430,21 @@
       enhanceDrawer();
       mountResultButton();
       mountBusinessLinks();
-      autoAnalyzeIfReady();
+      if (config.autoAnalyze === true) autoAnalyzeIfReady();
     });
     observer.observe(document.body, { childList: true, subtree: true });
     enhanceDrawer();
     mountResultButton();
     mountBusinessLinks();
-    checkHealth().then(autoAnalyzeIfReady);
+    checkHealth().then(() => {
+      if (config.autoAnalyze === true) autoAnalyzeIfReady();
+    });
     window.BELINK_AI = Object.freeze({
       analyze: () => analyzeWithBelink(),
       configureBackend: openBackendSetup,
       health: () => health,
-      apiBase: () => apiBase
+      apiBase: () => apiBase,
+      autoAnalyzeEnabled: () => config.autoAnalyze === true
     });
   }
 
