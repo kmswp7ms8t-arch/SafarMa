@@ -1,14 +1,17 @@
 {
-  "name": "SafarMa | سفرِ ما",
+  "id": "./",
+  "name": "SafarMa | سفرِ ما — Powered by Belink AI",
   "short_name": "SafarMa",
-  "start_url": "./",
+  "description": "Bilingual AI travel planning powered by Belink AI.",
+  "start_url": "./?v=11",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#FAF7F0",
-  "theme_color": "#0B2A4A",
+  "orientation": "portrait-primary",
+  "background_color": "#020817",
+  "theme_color": "#020817",
   "lang": "fa",
   "dir": "rtl",
+  "categories": ["travel", "lifestyle", "utilities"],
   "icons": [
     {
       "src": "./icon.svg",
