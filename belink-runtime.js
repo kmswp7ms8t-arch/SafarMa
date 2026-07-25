@@ -2,7 +2,7 @@ window.BELINK_RUNTIME_CONFIG = Object.freeze({
   apiBase: "",
   appName: "SafarMa",
   aiName: "Belink AI",
-  version: "8.2.0-rc4",
+  version: "8.3.0-v14",
   healthPath: "/health",
   readyPath: "/ready",
   chatPath: "/api/belink-ai/chat",

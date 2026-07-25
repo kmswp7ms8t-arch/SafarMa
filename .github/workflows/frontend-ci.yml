@@ -44,34 +44,60 @@ jobs:
           node --check belink-client-runtime.js
           node --check belink-connected-v2.js
           node --check privacy-controls.js
+          node --check trabzon-preset.js
           node --check loader.js
           node --check sw.js
       - name: Validate manifest JSON
         run: node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
-      - name: Check required release references and privacy controls
+      - name: Check V14 release references, privacy controls and Trabzon preset
         run: |
           for page in index.html app.html; do
-            grep -q 'belink-runtime.js?v=13' "$page"
-            grep -q 'belink-client-runtime.js?v=13' "$page"
-            grep -q 'belink-connected-v2.js?v=6' "$page"
-            grep -q 'privacy-controls.js?v=1' "$page"
-            grep -q 'safarma-specialists-v8.js?v=13' "$page"
-            grep -q 'safarma-final-v8.css?v=13' "$page"
+            grep -q 'belink-runtime.js?v=14' "$page"
+            grep -q 'belink-client-runtime.js?v=14' "$page"
+            grep -q 'belink-connected-v2.js?v=7' "$page"
+            grep -q 'privacy-controls.js?v=2' "$page"
+            grep -q 'trabzon-preset.js?v=1' "$page"
+            grep -q 'safarma-specialists-v8.js?v=14' "$page"
+            grep -q 'safarma-final-v8.css?v=14' "$page"
             grep -q 'Content-Security-Policy' "$page"
           done
-          grep -q 'privacy-controls.js?v=1' sw.js
-          grep -q 'belink-connected-v2.js?v=6' sw.js
-          grep -q 'safarma-rc4-v13' sw.js
-          grep -q '"./?v=13"' manifest.webmanifest
+          grep -q 'trabzon-preset.js?v=1' sw.js
+          grep -q 'privacy-controls.js?v=2' sw.js
+          grep -q 'belink-connected-v2.js?v=7' sw.js
+          grep -q 'safarma-v14-trabzon' sw.js
+          grep -q '"./?v=14"' manifest.webmanifest
+          grep -q 'version: "8.3.0-v14"' belink-runtime.js
           grep -q 'autoAnalyze: false' belink-runtime.js
           grep -q 'config.autoAnalyze !== true' belink-connected-v2.js
           grep -q '/api/belink-ai/user-data' privacy-controls.js
           grep -q 'method: "DELETE"' privacy-controls.js
           grep -q 'Export my data' privacy-controls.js
           grep -q 'Delete all my data' privacy-controls.js
+          grep -q 'amir-sanaz-trabzon-2026' trabzon-preset.js
+          grep -q '2026-08-06' trabzon-preset.js
+          grep -q 'budget: 13500' trabzon-preset.js
+          grep -q 'estimate_needs_live_verification' trabzon-preset.js
+          grep -q 'QAR 11,000–13,500' trabzon-preset.js
           grep -q 'دریافت فایل اطلاعات' legal.html
           grep -q 'حذف کامل اطلاعات' legal.html
           ! grep -q 'caches.match("./index.html")' sw.js || grep -q 'request.mode === "navigate"' sw.js
+      - name: Ensure preset does not claim live verification
+        run: |
+          python - <<'PY'
+          import pathlib
+          text = pathlib.Path('trabzon-preset.js').read_text(encoding='utf-8')
+          required = [
+              'estimate_needs_live_verification',
+              'دوباره بررسی شوند',
+              'must be checked again when used',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Missing preset trust labels: ' + ', '.join(missing))
+          forbidden = ['visaConfirmed: true', 'livePriceConfirmed: true', 'guaranteedEntry: true']
+          if any(item in text for item in forbidden):
+              raise SystemExit('Preset must not claim confirmed live travel facts.')
+          PY
       - name: Ensure exported local snapshot never contains the signed token value
         run: |
           python - <<'PY'
