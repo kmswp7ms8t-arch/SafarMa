@@ -1,37 +1,41 @@
-const CACHE = "safarma-rc3-v11-20260725";
+const CACHE = "safarma-rc3-v12-20260725";
 const ASSETS = [
   "./",
   "./index.html",
   "./app.html",
-  "./styles.css",
-  "./online-v2.css",
-  "./belink-ai.css",
-  "./safarma-final-v8.css",
-  "./belink-runtime.js",
-  "./belink-client-runtime.js",
-  "./loader.js",
-  "./compat.js",
-  "./fix-data.js",
-  "./result-guard.js",
-  "./app1a.js",
-  "./app1b.js",
-  "./app2a.js",
-  "./app2b.js",
-  "./app3.js",
-  "./app4.js",
-  "./app5.js",
-  "./online-v2.js",
-  "./belink-ai.js",
-  "./safarma-specialists-v8.js",
-  "./belink-connected-v2.js",
+  "./styles.css?v=12",
+  "./online-v2.css?v=12",
+  "./belink-ai.css?v=12",
+  "./safarma-final-v8.css?v=12",
+  "./belink-runtime.js?v=12",
+  "./belink-client-runtime.js?v=12",
+  "./loader.js?v=12",
+  "./compat.js?v=12",
+  "./fix-data.js?v=12",
+  "./result-guard.js?v=12",
+  "./app1a.js?v=12",
+  "./app1b.js?v=12",
+  "./app2a.js?v=12",
+  "./app2b.js?v=12",
+  "./app3.js?v=12",
+  "./app4.js?v=12",
+  "./app5.js?v=12",
+  "./online-v2.js?v=12",
+  "./belink-ai.js?v=12",
+  "./safarma-specialists-v8.js?v=12",
+  "./belink-connected-v2.js?v=5",
   "./legal.html",
   "./plans.html",
-  "./manifest.webmanifest",
+  "./manifest.webmanifest?v=12",
   "./icon.svg"
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {

@@ -1,5 +1,5 @@
 (async () => {
-  const VERSION = "11";
+  const VERSION = "12";
   const parts = [
     "app1a.js",
     "app1b.js",
@@ -21,7 +21,7 @@
     const message = document.createElement("div");
     message.id = "safarmaBootError";
     message.style.cssText = "position:fixed;inset:20px;z-index:9999;margin:auto;max-width:520px;height:max-content;padding:20px;border-radius:18px;background:#071426;color:#f2f8ff;border:1px solid rgba(111,231,255,.18);box-shadow:0 16px 50px #0008;font-family:system-ui;text-align:center";
-    message.innerHTML = `<strong>SafarMa could not start.</strong><br><small>Please refresh the page. If the problem continues, close the installed app, reopen the V11 link, and clear old Safari website data.</small>`;
+    message.innerHTML = `<strong>SafarMa could not start.</strong><br><small>Please refresh the page. If the problem continues, close the installed app, reopen the V12 link, and clear old Safari website data.</small>`;
     document.body.appendChild(message);
   }
 
