@@ -45,7 +45,7 @@ jobs:
           node --check sw.js
       - name: Validate manifest JSON
         run: node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
-      - name: Check required release references
+      - name: Check required release references and cost controls
         run: |
           for page in index.html app.html; do
             grep -q 'belink-runtime.js' "$page"
@@ -58,6 +58,9 @@ jobs:
           grep -q 'belink-client-runtime.js' sw.js
           grep -q 'belink-connected-v2.js' sw.js
           ! grep -q 'caches.match("./index.html")' sw.js || grep -q 'request.mode === "navigate"' sw.js
+          grep -q 'autoAnalyze: false' belink-runtime.js
+          grep -q 'config.autoAnalyze !== true' belink-connected-v2.js
+          grep -q 'if (config.autoAnalyze === true)' belink-connected-v2.js
       - name: Ensure deployable frontend contains no secret
         run: |
           python - <<'PY'
