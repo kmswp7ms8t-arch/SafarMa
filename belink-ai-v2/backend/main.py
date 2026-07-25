@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
+import json
 import logging
 import os
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
@@ -25,9 +28,17 @@ from auth import (
 )
 from memory import MemoryStore, PrivatePreferences, TripFeedback
 
-SERVICE_VERSION = "0.4.0"
+SERVICE_VERSION = "0.5.0"
 DEFAULT_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080"
 logger = logging.getLogger("belink-ai")
+
+
+def env_int(name: str, default: int, minimum: int = 0, maximum: int = 1_000_000) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
 
 
 def parse_origins() -> list[str]:
@@ -43,6 +54,31 @@ def parse_origins() -> list[str]:
         if parsed.scheme in {"http", "https"} and parsed.netloc and not parsed.path.strip("/"):
             result.append(f"{parsed.scheme}://{parsed.netloc}")
     return list(dict.fromkeys(result))
+
+
+def utc_day_window() -> tuple[str, str, int]:
+    now = datetime.now(timezone.utc)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    reset = start + timedelta(days=1)
+    retry_after = max(1, int((reset - now).total_seconds()))
+    return start.isoformat(), reset.isoformat(), retry_after
+
+
+def profile_fingerprint(profile: TravelProfile) -> str:
+    payload = json.dumps(profile.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def ai_connected() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY"))
+
+
+def quota_settings() -> dict[str, int]:
+    return {
+        "analyses_per_day": env_int("BELINK_ANALYSES_PER_DAY", 5, 0, 10_000),
+        "chats_per_day": env_int("BELINK_CHATS_PER_DAY", 50, 0, 100_000),
+        "analysis_cache_seconds": env_int("BELINK_ANALYSIS_CACHE_SECONDS", 900, 0, 86_400),
+    }
 
 
 class SlidingWindowLimiter:
@@ -75,6 +111,7 @@ class ChatResponse(BaseModel):
     client_token: str
     mode: str
     answer: BelinkChatAnswer
+    usage: dict[str, Any]
 
 
 app = FastAPI(
@@ -95,14 +132,51 @@ app.add_middleware(
 
 memory = MemoryStore()
 limiter = SlidingWindowLimiter(
-    limit=int(os.getenv("BELINK_RATE_LIMIT", "30")),
-    window_seconds=int(os.getenv("BELINK_RATE_WINDOW_SECONDS", "60")),
+    limit=env_int("BELINK_RATE_LIMIT", 30, 1, 100_000),
+    window_seconds=env_int("BELINK_RATE_WINDOW_SECONDS", 60, 1, 86_400),
 )
+
+
+def usage_snapshot(user_id: str) -> dict[str, Any]:
+    start, reset, _ = utc_day_window()
+    counts = memory.usage_summary(user_id, start)
+    settings = quota_settings()
+    return {
+        "window": "utc_day",
+        "window_started_at": start,
+        "resets_at": reset,
+        "ai_connected": ai_connected(),
+        "analyses": {
+            "used": counts.get("analysis", 0),
+            "limit": settings["analyses_per_day"],
+            "cache_hits": counts.get("analysis_cache_hit", 0),
+            "offline": counts.get("analysis_offline", 0),
+        },
+        "chats": {
+            "used": counts.get("chat", 0),
+            "limit": settings["chats_per_day"],
+            "offline": counts.get("chat_offline", 0),
+        },
+        "analysis_cache_seconds": settings["analysis_cache_seconds"],
+    }
+
+
+def enforce_daily_quota(user_id: str, event_type: str, limit: int, label: str) -> None:
+    if limit <= 0:
+        return
+    start, _, retry_after = utc_day_window()
+    used = memory.count_usage_since(user_id, event_type, start)
+    if used >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily Belink AI {label} limit reached ({limit} per UTC day).",
+            headers={"Retry-After": str(retry_after)},
+        )
 
 
 @app.middleware("http")
 async def security_and_size_headers(request: Request, call_next):
-    max_body = max(16_384, int(os.getenv("BELINK_MAX_BODY_BYTES", "131072")))
+    max_body = env_int("BELINK_MAX_BODY_BYTES", 131_072, 16_384, 10_000_000)
     content_length = request.headers.get("content-length")
     if request.method in {"POST", "PUT", "PATCH"} and content_length:
         try:
@@ -144,12 +218,14 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "service": "Belink AI Travel Core",
         "version": SERVICE_VERSION,
-        "ai_connected": bool(os.getenv("OPENAI_API_KEY")),
+        "ai_connected": ai_connected(),
         "model": os.getenv("BELINK_AI_MODEL", "gpt-5-mini"),
         "client_isolation": "signed",
         "persistent_session_secret": has_persistent_session_secret(),
         "data_export": True,
         "data_deletion": True,
+        "commercial_guardrails": True,
+        "quota": quota_settings(),
     }
 
 
@@ -161,7 +237,7 @@ def ready() -> dict[str, Any]:
         os.getenv("BELINK_ENV", "development").casefold() == "production"
         or os.getenv("BELINK_REQUIRE_SESSION_SECRET", "false").casefold() == "true"
     )
-    ai_ready = bool(os.getenv("OPENAI_API_KEY"))
+    ai_ready = ai_connected()
     secret_ready = has_persistent_session_secret()
     is_ready = database_ready and (ai_ready or not require_ai) and (secret_ready or not require_secret)
     if not is_ready:
@@ -173,6 +249,7 @@ def ready() -> dict[str, Any]:
         "client_isolation": "signed",
         "persistent_session_secret": secret_ready,
         "offline_mode_available": True,
+        "commercial_guardrails": True,
     }
 
 
@@ -181,17 +258,57 @@ async def analyze(
     profile: TravelProfile,
     identity: ClientIdentity = Depends(issue_or_validate_client),
 ) -> dict[str, Any]:
+    settings = quota_settings()
+    fingerprint = profile_fingerprint(profile)
+    connected = ai_connected()
+    cache_hit = False
+    cached_at: str | None = None
     try:
-        decision, mode = await analyze_travel(profile)
+        decision: BelinkTravelDecision
+        mode: str
+        cached = None
+        if connected and settings["analysis_cache_seconds"] > 0:
+            memory.purge_expired_cache(settings["analysis_cache_seconds"])
+            cached = memory.get_cached_analysis(
+                identity.client_id,
+                fingerprint,
+                settings["analysis_cache_seconds"],
+            )
+        if cached:
+            decision = BelinkTravelDecision.model_validate(cached["decision"])
+            mode = str(cached["mode"])
+            cache_hit = True
+            cached_at = str(cached["created_at"])
+            memory.record_usage(identity.client_id, "analysis_cache_hit")
+        else:
+            if connected:
+                enforce_daily_quota(
+                    identity.client_id,
+                    "analysis",
+                    settings["analyses_per_day"],
+                    "analysis",
+                )
+            decision, mode = await analyze_travel(profile)
+            if mode == "connected":
+                memory.record_usage(identity.client_id, "analysis")
+                if settings["analysis_cache_seconds"] > 0:
+                    memory.put_cached_analysis(identity.client_id, fingerprint, profile, decision, mode)
+            else:
+                memory.record_usage(identity.client_id, "analysis_offline")
         trip_id = memory.save_trip(profile, decision, mode, identity.client_id)
         session_id = memory.save_session(profile, decision, [], identity.client_id)
         return {
             "mode": mode,
+            "cache_hit": cache_hit,
+            "cached_at": cached_at,
             "trip_id": trip_id,
             "session_id": session_id,
             "client_token": identity.token,
             "decision": decision.model_dump(),
+            "usage": usage_snapshot(identity.client_id),
         }
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="Invalid travel profile") from exc
     except Exception as exc:
@@ -212,17 +329,34 @@ async def chat(
     decision_data = payload.latest_decision.model_dump() if payload.latest_decision else (stored or {}).get("decision")
     decision = BelinkTravelDecision.model_validate(decision_data) if decision_data else None
     history = list((stored or {}).get("messages") or [])
+    settings = quota_settings()
+    if ai_connected():
+        enforce_daily_quota(identity.client_id, "chat", settings["chats_per_day"], "chat")
     try:
         answer, mode = await chat_with_commander(profile, decision, payload.question, history)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Belink Commander chat failed")
         raise HTTPException(status_code=502, detail="Belink Commander could not answer right now") from exc
+    memory.record_usage(identity.client_id, "chat" if mode == "connected" else "chat_offline")
     history.extend([
         {"role": "user", "content": payload.question[:1200]},
         {"role": "assistant", "content": answer.answer[:3000]},
     ])
     session_id = memory.save_session(profile, decision, history, identity.client_id, payload.session_id)
-    return ChatResponse(session_id=session_id, client_token=identity.token, mode=mode, answer=answer)
+    return ChatResponse(
+        session_id=session_id,
+        client_token=identity.token,
+        mode=mode,
+        answer=answer,
+        usage=usage_snapshot(identity.client_id),
+    )
+
+
+@app.get("/api/belink-ai/usage", dependencies=[Depends(rate_limit)])
+def get_usage(identity: ClientIdentity = Depends(require_client)) -> dict[str, Any]:
+    return usage_snapshot(identity.client_id)
 
 
 @app.get("/api/belink-ai/memory", response_model=PrivatePreferences, dependencies=[Depends(rate_limit)])
