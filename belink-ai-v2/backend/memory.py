@@ -5,7 +5,7 @@ import os
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +16,11 @@ from agent import BelinkTravelDecision, TravelProfile
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def parse_utc(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 class PrivatePreferences(BaseModel):
@@ -76,6 +81,21 @@ class MemoryStore:
                     messages_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS usage_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS analysis_cache (
+                    user_id TEXT NOT NULL,
+                    profile_hash TEXT NOT NULL,
+                    profile_json TEXT NOT NULL,
+                    decision_json TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (user_id, profile_hash)
+                );
             """)
             if "user_id" not in self._columns(connection, "conversations"):
                 connection.execute(
@@ -86,6 +106,12 @@ class MemoryStore:
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_usage_user_type_created ON usage_events(user_id, event_type, created_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cache_created ON analysis_cache(created_at)"
             )
 
     def ready(self) -> bool:
@@ -163,14 +189,143 @@ class MemoryStore:
             for row in rows
         ]
 
+    def record_usage(self, user_id: str, event_type: str) -> None:
+        clean_type = event_type.strip().casefold()[:64]
+        if not clean_type:
+            raise ValueError("event_type is required")
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                "INSERT INTO usage_events(user_id, event_type, created_at) VALUES (?, ?, ?)",
+                (user_id, clean_type, utc_now()),
+            )
+
+    def count_usage_since(self, user_id: str, event_type: str, since: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT COUNT(*) AS total FROM usage_events
+                WHERE user_id = ? AND event_type = ? AND created_at >= ?""",
+                (user_id, event_type.strip().casefold()[:64], since),
+            ).fetchone()
+        return int(row["total"] if row else 0)
+
+    def usage_summary(self, user_id: str, since: str) -> dict[str, int]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT event_type, COUNT(*) AS total FROM usage_events
+                WHERE user_id = ? AND created_at >= ?
+                GROUP BY event_type""",
+                (user_id, since),
+            ).fetchall()
+        return {row["event_type"]: int(row["total"]) for row in rows}
+
+    def list_usage_events(self, user_id: str, limit: int = 1000) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(limit, 5000))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT event_type, created_at FROM usage_events
+                WHERE user_id = ? ORDER BY created_at DESC LIMIT ?""",
+                (user_id, safe_limit),
+            ).fetchall()
+        return [{"event_type": row["event_type"], "created_at": row["created_at"]} for row in rows]
+
+    def get_cached_analysis(
+        self,
+        user_id: str,
+        profile_hash: str,
+        max_age_seconds: int,
+    ) -> dict[str, Any] | None:
+        if max_age_seconds <= 0:
+            return None
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        with self._connect() as connection:
+            row = connection.execute(
+                """SELECT profile_json, decision_json, mode, created_at
+                FROM analysis_cache WHERE user_id = ? AND profile_hash = ?""",
+                (user_id, profile_hash),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            created_at = parse_utc(row["created_at"])
+        except (TypeError, ValueError):
+            return None
+        if created_at < cutoff:
+            return None
+        return {
+            "profile": json.loads(row["profile_json"]),
+            "decision": json.loads(row["decision_json"]),
+            "mode": row["mode"],
+            "created_at": row["created_at"],
+        }
+
+    def put_cached_analysis(
+        self,
+        user_id: str,
+        profile_hash: str,
+        profile: TravelProfile,
+        decision: BelinkTravelDecision,
+        mode: str,
+    ) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """INSERT INTO analysis_cache(user_id, profile_hash, profile_json, decision_json, mode, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, profile_hash) DO UPDATE SET
+                    profile_json=excluded.profile_json,
+                    decision_json=excluded.decision_json,
+                    mode=excluded.mode,
+                    created_at=excluded.created_at""",
+                (
+                    user_id,
+                    profile_hash,
+                    profile.model_dump_json(),
+                    decision.model_dump_json(),
+                    mode,
+                    utc_now(),
+                ),
+            )
+
+    def list_cached_analyses(self, user_id: str, limit: int = 1000) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(limit, 1000))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT profile_hash, profile_json, decision_json, mode, created_at
+                FROM analysis_cache WHERE user_id = ?
+                ORDER BY created_at DESC LIMIT ?""",
+                (user_id, safe_limit),
+            ).fetchall()
+        return [
+            {
+                "profile_hash": row["profile_hash"],
+                "profile": json.loads(row["profile_json"]),
+                "decision": json.loads(row["decision_json"]),
+                "mode": row["mode"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def purge_expired_cache(self, max_age_seconds: int) -> int:
+        if max_age_seconds <= 0:
+            return 0
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)).isoformat()
+        with self._lock, self._connect() as connection:
+            deleted = connection.execute(
+                "DELETE FROM analysis_cache WHERE created_at < ?",
+                (cutoff,),
+            ).rowcount
+        return max(0, deleted)
+
     def export_user_data(self, user_id: str) -> dict[str, Any]:
         return {
-            "format": "safarma-user-data-v1",
+            "format": "safarma-user-data-v2",
             "exported_at": utc_now(),
             "anonymous_client_id": user_id,
             "preferences": self.get_preferences(user_id).model_dump(),
             "trips": self.list_trips(user_id, 1000),
             "conversations": self.list_sessions(user_id, 1000),
+            "usage_events": self.list_usage_events(user_id, 5000),
+            "cached_analyses": self.list_cached_analyses(user_id, 1000),
         }
 
     def set_trip_feedback(self, trip_id: str, status: str, user_id: str) -> bool:
@@ -250,8 +405,12 @@ class MemoryStore:
             preferences = connection.execute("DELETE FROM preferences WHERE user_id = ?", (user_id,)).rowcount
             trips = connection.execute("DELETE FROM trips WHERE user_id = ?", (user_id,)).rowcount
             conversations = connection.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,)).rowcount
+            usage_events = connection.execute("DELETE FROM usage_events WHERE user_id = ?", (user_id,)).rowcount
+            cached_analyses = connection.execute("DELETE FROM analysis_cache WHERE user_id = ?", (user_id,)).rowcount
         return {
             "preferences": max(0, preferences),
             "trips": max(0, trips),
             "conversations": max(0, conversations),
+            "usage_events": max(0, usage_events),
+            "cached_analyses": max(0, cached_analyses),
         }
