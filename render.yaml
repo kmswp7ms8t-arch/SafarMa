@@ -7,7 +7,7 @@ services:
     dockerfilePath: ./belink-ai-v2/backend/Dockerfile
     dockerContext: ./belink-ai-v2/backend
     healthCheckPath: /ready
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: OPENAI_API_KEY
         sync: false
