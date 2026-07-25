@@ -54,7 +54,7 @@ jobs:
 
       - name: Assemble clean release directory
         env:
-          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           ROOT="SafarMa_RC4_V13_Release"
@@ -112,13 +112,15 @@ jobs:
           import json, os, pathlib
           root = pathlib.Path('SafarMa_RC4_V13_Release')
           files = sorted(str(path.relative_to(root)) for path in root.rglob('*') if path.is_file())
+          files_with_manifest = sorted([*files, 'RELEASE_INFO.json'])
           payload = {
               'product': 'SafarMa | سفرِ ما',
               'powered_by': 'Belink AI',
               'version': '8.2.0 RC4 / V13',
               'source_commit': os.environ['RELEASE_SHA'],
-              'file_count': len(files),
-              'files': files,
+              'file_count_excluding_sha256sums': len(files_with_manifest),
+              'files_excluding_sha256sums': files_with_manifest,
+              'checksum_file': 'SHA256SUMS.txt',
           }
           (root / 'RELEASE_INFO.json').write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
           PY
@@ -134,7 +136,7 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SafarMa-RC4-V13-${{ github.sha }}
+          name: SafarMa-RC4-V13-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             SafarMa_RC4_V13_Release.zip
             SafarMa_RC4_V13_Release.zip.sha256
