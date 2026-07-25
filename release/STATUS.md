@@ -2,7 +2,7 @@
 
 Version: **8.4.0 · V15**
 
-Release commit: pending merge and final CI
+Release code commit: `b75aaa23b6e4a054ba77567fe01b41fe51f2a4a8`
 
 ## Completed
 
@@ -24,8 +24,9 @@ Release commit: pending merge and final CI
 - CSP, referrer and browser permissions restrictions are active.
 - The production container runs as a non-root user and has an internal health check.
 - Render Blueprint generates a persistent signing secret and uses `/ready` for deployment health.
-- Frontend CI validates both editions, manifests, PWA references, privacy controls and secret absence.
-- Backend CI tests Python 3.11 and 3.13, API readiness, privacy isolation and Docker production build.
+- Frontend V15 CI passed JavaScript, both manifests, personal/public separation, PWA references, privacy controls and secret scans.
+- Backend CI passed Python 3.11 and 3.13 tests, readiness smoke checks, production-verifier compilation and Docker production build.
+- The V15 release bundle passed its secret scan, assembly and checksum workflow.
 
 ## Published frontend editions
 
