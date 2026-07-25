@@ -1,20 +1,20 @@
 # SafarMa | سفرِ ما
 
-SafarMa is a bilingual travel-planning PWA powered by **Belink AI**. The approved product now has two separate entry points without changing its core visual identity.
+SafarMa is a bilingual travel-planning PWA powered by **Belink AI**. The approved product has separate personal and public entry points while preserving the same visual identity and planning system.
 
 ## Published editions
 
 ### Personal gift edition
 
-Created by Amir for Sanaz, with the birthday opening and optional Trabzon trip preset:
+Created by Amir for Sanaz, with the birthday opening and optional Trabzon trip preset. This entry point is marked not to be indexed by search engines:
 
-**https://kmswp7ms8t-arch.github.io/SafarMa/?v=15**
+**https://kmswp7ms8t-arch.github.io/SafarMa/?v=16**
 
 ### General public/business edition
 
-Neutral onboarding with no birthday or personal preset content:
+Neutral onboarding with no birthday or personal-preset content, plus canonical metadata, robots policy and sitemap:
 
-**https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=15**
+**https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=16**
 
 ### Pilot pricing
 
@@ -29,16 +29,17 @@ Neutral onboarding with no birthday or personal preset content:
 - Privacy: authenticated JSON export and complete scoped deletion.
 - Trust boundary: missing or conflicting entry, passport, safety or route evidence cannot become a confirmed feasible result.
 - AI usage: explicit user action only, with rate and turn limits.
+- Public launch behavior: no technical backend prompt is shown to ordinary visitors before the production backend is activated.
 
 ## Connected AI deployment
 
-The static PWA works in transparent offline mode. Real OpenAI-connected analysis requires the backend to be deployed from the repository's `render.yaml` and `OPENAI_API_KEY` to be stored only as a server-side hosting secret.
+The static PWA works with its built-in planner and transparent offline state. Real OpenAI-connected analysis requires the backend to be deployed from the repository's `render.yaml` and `OPENAI_API_KEY` to be stored only as a server-side hosting secret.
 
 Render Blueprint:
 
 **https://render.com/deploy?repo=https://github.com/kmswp7ms8t-arch/SafarMa**
 
-See `DEPLOY_NOW.md` and `FINAL_PRODUCTION_STATUS.md` for the full verification and launch procedure.
+See `DEPLOY_NOW.md`, `FINAL_PRODUCTION_STATUS.md` and `release/STATUS.md` for the complete verification and launch procedure.
 
 ## Install on iPhone
 
