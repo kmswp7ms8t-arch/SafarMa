@@ -6,6 +6,7 @@ on:
     paths:
       - "index.html"
       - "app.html"
+      - "manifest.webmanifest"
       - "*.js"
       - "*.css"
       - ".github/workflows/frontend-ci.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "index.html"
       - "app.html"
+      - "manifest.webmanifest"
       - "*.js"
       - "*.css"
       - ".github/workflows/frontend-ci.yml"
@@ -36,15 +38,26 @@ jobs:
         run: |
           node --check /tmp/safarma-combined.js
           node --check safarma-specialists-v8.js
-          node --check belink-connected.js
+          node --check belink-runtime.js
+          node --check belink-client-runtime.js
+          node --check belink-connected-v2.js
           node --check loader.js
           node --check sw.js
+      - name: Validate manifest JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
       - name: Check required release references
         run: |
-          grep -q 'belink-connected.js' index.html
-          grep -q 'safarma-specialists-v8.js' index.html
-          grep -q 'safarma-final-v8.css' index.html
-          grep -q 'belink-connected.js' sw.js
+          for page in index.html app.html; do
+            grep -q 'belink-runtime.js' "$page"
+            grep -q 'belink-client-runtime.js' "$page"
+            grep -q 'belink-connected-v2.js' "$page"
+            grep -q 'safarma-specialists-v8.js' "$page"
+            grep -q 'safarma-final-v8.css' "$page"
+            grep -q 'Content-Security-Policy' "$page"
+          done
+          grep -q 'belink-client-runtime.js' sw.js
+          grep -q 'belink-connected-v2.js' sw.js
+          ! grep -q 'caches.match("./index.html")' sw.js || grep -q 'request.mode === "navigate"' sw.js
       - name: Ensure frontend contains no OpenAI secret
         run: |
           ! grep -R --exclude-dir=.git --exclude='*.md' --exclude='.env.example' -E 'sk-proj-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY=' .
