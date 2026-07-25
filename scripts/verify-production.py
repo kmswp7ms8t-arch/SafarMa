@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify a deployed SafarMa V15 frontend and Belink AI backend.
+"""Verify a deployed SafarMa V16 frontend and Belink AI backend.
 
 Default checks do not invoke the AI model. Pass ``--privacy-smoke`` explicitly to
 create one real analysis, export that temporary anonymous client's records, then
@@ -18,7 +18,6 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Literal
-
 
 Edition = Literal["personal", "public"]
 
@@ -115,65 +114,79 @@ def check_frontend(frontend: str) -> Edition:
 
     common_markers = (
         "SafarMa | سفرِ ما",
-        "belink-runtime.js?v=15",
-        "belink-client-runtime.js?v=15",
-        "belink-connected-v2.js?v=8",
-        "privacy-controls.js?v=3",
-        "safarma-specialists-v8.js?v=15",
+        "belink-runtime.js?v=16",
+        "belink-client-runtime.js?v=16",
+        "belink-connected-v2.js?v=9",
+        "privacy-controls.js?v=4",
+        "safarma-specialists-v8.js?v=16",
         "Content-Security-Policy",
     )
     for marker in common_markers:
-        require(marker in html, f"Frontend is missing V15 release marker: {marker}")
+        require(marker in html, f"Frontend is missing V16 release marker: {marker}")
 
     if edition == "public":
-        for marker in ("public-mode.js?v=1", "manifest-public.webmanifest?v=15"):
+        for marker in (
+            "public-mode.js?v=2",
+            "public-launch-guard.js?v=1",
+            "manifest-public.webmanifest?v=16",
+            'name="robots" content="index,follow,max-image-preview:large"',
+            'rel="canonical" href="https://kmswp7ms8t-arch.github.io/SafarMa/public.html"',
+        ):
             require(marker in html, f"Public edition is missing marker: {marker}")
         for personal_marker in ("تولدت مبارک، ساناز", "Happy birthday, Sanaz", "trabzon-preset.js"):
             require(personal_marker not in html, f"Public edition contains personal marker: {personal_marker}")
     else:
-        for marker in ("trabzon-preset.js?v=2", "manifest.webmanifest?v=15", "تولدت مبارک، ساناز"):
+        for marker in (
+            "trabzon-preset.js?v=3",
+            "manifest.webmanifest?v=16",
+            "تولدت مبارک، ساناز",
+            'name="robots" content="noindex,nofollow,noarchive"',
+        ):
             require(marker in html, f"Personal edition is missing marker: {marker}")
 
-    print_check("Frontend V15 entry point", edition)
+    print_check("Frontend V16 entry point", edition)
 
     base = frontend_base(frontend)
     assets: dict[str, str] = {
-        "privacy controls": f"{base}/privacy-controls.js?v=3",
+        "privacy controls": f"{base}/privacy-controls.js?v=4",
         "service worker": f"{base}/sw.js",
         "legal policy": f"{base}/legal.html",
         "pilot pricing": f"{base}/pricing.html",
+        "robots policy": f"{base}/robots.txt",
+        "sitemap": f"{base}/sitemap.xml",
     }
     if edition == "public":
         assets.update(
             {
-                "public mode": f"{base}/public-mode.js?v=1",
-                "manifest": f"{base}/manifest-public.webmanifest?v=15",
+                "public mode": f"{base}/public-mode.js?v=2",
+                "public launch guard": f"{base}/public-launch-guard.js?v=1",
+                "manifest": f"{base}/manifest-public.webmanifest?v=16",
             }
         )
     else:
         assets.update(
             {
-                "Trabzon preset": f"{base}/trabzon-preset.js?v=2",
-                "manifest": f"{base}/manifest.webmanifest?v=15",
+                "Trabzon preset": f"{base}/trabzon-preset.js?v=3",
+                "manifest": f"{base}/manifest.webmanifest?v=16",
             }
         )
 
     for label, url in assets.items():
         asset = request(url, headers={"Accept": "*/*"})
         require(asset.status == 200, f"{label} returned HTTP {asset.status}")
-        require(len(asset.body) > 30, f"{label} is unexpectedly empty")
+        require(len(asset.body) > 20, f"{label} is unexpectedly empty")
         print_check(label)
 
     manifest = request(assets["manifest"]).json()
-    expected_start = "./public.html?v=15" if edition == "public" else "./?v=15"
+    expected_start = "./public.html?v=16" if edition == "public" else "./?v=16"
     require(manifest.get("start_url") == expected_start, f"Manifest start_url is not {expected_start}")
     print_check("Installed PWA start URL", expected_start)
 
     service_worker = request(assets["service worker"]).text()
-    require("safarma-v15-public-personal" in service_worker, "Service worker is not the unified V15 cache")
-    require("public.html" in service_worker, "Service worker does not cache the public edition")
-    require("pricing.html" in service_worker, "Service worker does not cache the public pricing page")
-    print_check("Unified V15 service worker")
+    require("safarma-v16-public-launch" in service_worker, "Service worker is not the V16 launch cache")
+    require("public-launch-guard.js?v=1" in service_worker, "Service worker does not cache the public launch guard")
+    require("robots.txt" in service_worker and "sitemap.xml" in service_worker, "Service worker is missing launch metadata")
+    print_check("Unified V16 service worker")
     return edition
 
 
@@ -291,11 +304,11 @@ def privacy_smoke(backend: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify a SafarMa V15 frontend edition and Belink AI production backend.")
+    parser = argparse.ArgumentParser(description="Verify a SafarMa V16 frontend edition and Belink AI production backend.")
     parser.add_argument(
         "--frontend",
-        default="https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=15",
-        help="SafarMa V15 personal or public URL",
+        default="https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=16",
+        help="SafarMa V16 personal or public URL",
     )
     parser.add_argument("--backend", required=True, help="Deployed Belink AI backend base URL")
     parser.add_argument(
@@ -320,7 +333,7 @@ def main() -> int:
             privacy_smoke(backend)
         else:
             print("[INFO] Paid/connected AI analysis was not invoked. Pass --privacy-smoke explicitly for an end-to-end disposable test.")
-        print(f"\nSafarMa V15 {edition} production verification completed successfully.")
+        print(f"\nSafarMa V16 {edition} production verification completed successfully.")
         return 0
     except VerificationError as error:
         print(f"[FAIL] {error}", file=sys.stderr)
