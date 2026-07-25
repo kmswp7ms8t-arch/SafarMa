@@ -14,6 +14,10 @@ services:
         sync: false
       - key: BELINK_AI_MODEL
         value: gpt-5-mini
+      - key: BELINK_AI_MAX_TURNS
+        value: "20"
+      - key: BELINK_CHAT_MAX_TURNS
+        value: "10"
       - key: BELINK_ENV
         value: production
       - key: BELINK_REQUIRE_AI
