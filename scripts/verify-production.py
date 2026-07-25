@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify a deployed SafarMa frontend and Belink AI backend.
+"""Verify a deployed SafarMa V15 frontend and Belink AI backend.
 
 Default checks do not invoke the AI model. Pass ``--privacy-smoke`` explicitly to
 create one real analysis, export that temporary anonymous client's records, then
@@ -17,7 +17,10 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Literal
+
+
+Edition = Literal["personal", "public"]
 
 
 @dataclass
@@ -89,30 +92,72 @@ def print_check(label: str, detail: str = "OK") -> None:
     print(f"[PASS] {label}: {detail}")
 
 
-def check_frontend(frontend: str) -> None:
+def detect_edition(frontend: str) -> Edition:
+    path = urllib.parse.urlparse(frontend).path.rstrip("/")
+    return "public" if path.endswith("/public.html") or path.endswith("public.html") else "personal"
+
+
+def frontend_base(frontend: str) -> str:
+    parsed = urllib.parse.urlparse(frontend)
+    path = parsed.path
+    if path.endswith(".html"):
+        path = path.rsplit("/", 1)[0] + "/"
+    elif not path.endswith("/"):
+        path += "/"
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, path, "", "", "")).rstrip("/")
+
+
+def check_frontend(frontend: str) -> Edition:
     response = request(frontend, headers={"Accept": "text/html"})
     require(response.status == 200, f"Frontend returned HTTP {response.status}")
     html = response.text()
-    for marker in (
-        "SafarMa | سفرِ ما",
-        "belink-runtime.js?v=13",
-        "belink-client-runtime.js?v=13",
-        "belink-connected-v2.js?v=6",
-        "privacy-controls.js?v=1",
-        "Content-Security-Policy",
-    ):
-        require(marker in html, f"Frontend is missing release marker: {marker}")
-    print_check("Frontend V13 entry point")
+    edition = detect_edition(frontend)
 
-    base = frontend.split("?", 1)[0].rstrip("/")
-    if base.endswith("index.html") or base.endswith("app.html"):
-        base = base.rsplit("/", 1)[0]
-    assets = {
-        "privacy controls": f"{base}/privacy-controls.js?v=1",
+    common_markers = (
+        "SafarMa | سفرِ ما",
+        "belink-runtime.js?v=15",
+        "belink-client-runtime.js?v=15",
+        "belink-connected-v2.js?v=8",
+        "privacy-controls.js?v=3",
+        "safarma-specialists-v8.js?v=15",
+        "Content-Security-Policy",
+    )
+    for marker in common_markers:
+        require(marker in html, f"Frontend is missing V15 release marker: {marker}")
+
+    if edition == "public":
+        for marker in ("public-mode.js?v=1", "manifest-public.webmanifest?v=15"):
+            require(marker in html, f"Public edition is missing marker: {marker}")
+        for personal_marker in ("تولدت مبارک، ساناز", "Happy birthday, Sanaz", "trabzon-preset.js"):
+            require(personal_marker not in html, f"Public edition contains personal marker: {personal_marker}")
+    else:
+        for marker in ("trabzon-preset.js?v=2", "manifest.webmanifest?v=15", "تولدت مبارک، ساناز"):
+            require(marker in html, f"Personal edition is missing marker: {marker}")
+
+    print_check("Frontend V15 entry point", edition)
+
+    base = frontend_base(frontend)
+    assets: dict[str, str] = {
+        "privacy controls": f"{base}/privacy-controls.js?v=3",
         "service worker": f"{base}/sw.js",
-        "manifest": f"{base}/manifest.webmanifest?v=13",
         "legal policy": f"{base}/legal.html",
+        "pilot pricing": f"{base}/pricing.html",
     }
+    if edition == "public":
+        assets.update(
+            {
+                "public mode": f"{base}/public-mode.js?v=1",
+                "manifest": f"{base}/manifest-public.webmanifest?v=15",
+            }
+        )
+    else:
+        assets.update(
+            {
+                "Trabzon preset": f"{base}/trabzon-preset.js?v=2",
+                "manifest": f"{base}/manifest.webmanifest?v=15",
+            }
+        )
+
     for label, url in assets.items():
         asset = request(url, headers={"Accept": "*/*"})
         require(asset.status == 200, f"{label} returned HTTP {asset.status}")
@@ -120,8 +165,16 @@ def check_frontend(frontend: str) -> None:
         print_check(label)
 
     manifest = request(assets["manifest"]).json()
-    require(manifest.get("start_url") == "./?v=13", "Manifest start_url is not V13")
-    print_check("Installed PWA start URL", manifest["start_url"])
+    expected_start = "./public.html?v=15" if edition == "public" else "./?v=15"
+    require(manifest.get("start_url") == expected_start, f"Manifest start_url is not {expected_start}")
+    print_check("Installed PWA start URL", expected_start)
+
+    service_worker = request(assets["service worker"]).text()
+    require("safarma-v15-public-personal" in service_worker, "Service worker is not the unified V15 cache")
+    require("public.html" in service_worker, "Service worker does not cache the public edition")
+    require("pricing.html" in service_worker, "Service worker does not cache the public pricing page")
+    print_check("Unified V15 service worker")
+    return edition
 
 
 def check_security_headers(response: Response) -> None:
@@ -238,11 +291,11 @@ def privacy_smoke(backend: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify the SafarMa V13 frontend and Belink AI production backend.")
+    parser = argparse.ArgumentParser(description="Verify a SafarMa V15 frontend edition and Belink AI production backend.")
     parser.add_argument(
         "--frontend",
-        default="https://kmswp7ms8t-arch.github.io/SafarMa/?v=13",
-        help="Public SafarMa URL",
+        default="https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=15",
+        help="SafarMa V15 personal or public URL",
     )
     parser.add_argument("--backend", required=True, help="Deployed Belink AI backend base URL")
     parser.add_argument(
@@ -261,13 +314,13 @@ def main() -> int:
         frontend = normalize_url(args.frontend)
         backend = normalize_url(args.backend)
         origin = normalize_url(args.origin, allow_path=False)
-        check_frontend(frontend)
+        edition = check_frontend(frontend)
         check_backend(backend, origin)
         if args.privacy_smoke:
             privacy_smoke(backend)
         else:
             print("[INFO] Paid/connected AI analysis was not invoked. Pass --privacy-smoke explicitly for an end-to-end disposable test.")
-        print("\nSafarMa production verification completed successfully.")
+        print(f"\nSafarMa V15 {edition} production verification completed successfully.")
         return 0
     except VerificationError as error:
         print(f"[FAIL] {error}", file=sys.stderr)
