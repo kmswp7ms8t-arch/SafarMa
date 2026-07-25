@@ -34,6 +34,12 @@ services:
         value: "60"
       - key: BELINK_MAX_BODY_BYTES
         value: "131072"
+      - key: BELINK_ANALYSES_PER_DAY
+        value: "5"
+      - key: BELINK_CHATS_PER_DAY
+        value: "50"
+      - key: BELINK_ANALYSIS_CACHE_SECONDS
+        value: "900"
       - key: BELINK_AI_DATABASE
         value: /var/data/belink_ai.sqlite3
     disk:
