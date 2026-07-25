@@ -1,4 +1,4 @@
-name: Build SafarMa RC4 V13 release bundle
+name: Build SafarMa V15 release bundle
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
       - ".github/workflows/release-bundle.yml"
       - "index.html"
       - "app.html"
+      - "public.html"
       - "belink-ai-v2/**"
       - "scripts/**"
       - "*.js"
@@ -57,16 +58,16 @@ jobs:
           RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          ROOT="SafarMa_RC4_V13_Release"
+          ROOT="SafarMa_V15_Release"
           rm -rf "$ROOT"
           mkdir -p "$ROOT/frontend" "$ROOT/backend" "$ROOT/docs" "$ROOT/scripts" "$ROOT/workflows"
 
-          cp index.html app.html legal.html plans.html manifest.webmanifest icon.svg sw.js "$ROOT/frontend/"
+          cp index.html app.html public.html legal.html plans.html manifest.webmanifest manifest-public.webmanifest icon.svg sw.js "$ROOT/frontend/"
           cp styles.css online-v2.css belink-ai.css safarma-final-v8.css "$ROOT/frontend/"
           cp loader.js compat.js fix-data.js result-guard.js "$ROOT/frontend/"
           cp app1a.js app1b.js app2a.js app2b.js app3.js app4.js app5.js "$ROOT/frontend/"
           cp online-v2.js belink-ai.js safarma-specialists-v8.js belink-connected-v2.js "$ROOT/frontend/"
-          cp belink-runtime.js belink-client-runtime.js privacy-controls.js "$ROOT/frontend/"
+          cp belink-runtime.js belink-client-runtime.js privacy-controls.js trabzon-preset.js public-mode.js "$ROOT/frontend/"
 
           cp -R belink-ai-v2/backend/. "$ROOT/backend/"
           rm -rf "$ROOT/backend/.venv" "$ROOT/backend/data" "$ROOT/backend/.pytest_cache" "$ROOT/backend/__pycache__"
@@ -88,15 +89,20 @@ jobs:
           done
 
           cat > "$ROOT/README_FIRST.md" <<EOF
-          # SafarMa RC4 V13 Release
+          # SafarMa V15 Release
 
           Product: **SafarMa | سفرِ ما**  
           Intelligence layer: **Belink AI**  
           Source commit: \`${RELEASE_SHA}\`
 
+          ## Published editions
+
+          - \`frontend/index.html\`: personal gift edition for Amir and Sanaz, including the optional Trabzon preset.
+          - \`frontend/public.html\`: general public/business edition with neutral onboarding and no personal birthday or preset content.
+
           ## Folders
 
-          - \`frontend/\`: bilingual GitHub Pages/PWA application.
+          - \`frontend/\`: bilingual GitHub Pages/PWA applications.
           - \`backend/\`: FastAPI + OpenAI Agents SDK server.
           - \`docs/\`: deployment, production and release status.
           - \`scripts/\`: production verification tooling.
@@ -110,14 +116,18 @@ jobs:
 
           python - <<'PY'
           import json, os, pathlib
-          root = pathlib.Path('SafarMa_RC4_V13_Release')
+          root = pathlib.Path('SafarMa_V15_Release')
           files = sorted(str(path.relative_to(root)) for path in root.rglob('*') if path.is_file())
           files_with_manifest = sorted([*files, 'RELEASE_INFO.json'])
           payload = {
               'product': 'SafarMa | سفرِ ما',
               'powered_by': 'Belink AI',
-              'version': '8.2.0 RC4 / V13',
+              'version': '8.4.0 / V15',
               'source_commit': os.environ['RELEASE_SHA'],
+              'editions': {
+                  'personal': 'frontend/index.html',
+                  'public': 'frontend/public.html',
+              },
               'file_count_excluding_sha256sums': len(files_with_manifest),
               'files_excluding_sha256sums': files_with_manifest,
               'checksum_file': 'SHA256SUMS.txt',
@@ -128,7 +138,7 @@ jobs:
       - name: Generate checksums and ZIP
         run: |
           set -euo pipefail
-          ROOT="SafarMa_RC4_V13_Release"
+          ROOT="SafarMa_V15_Release"
           (cd "$ROOT" && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
           zip -qr "${ROOT}.zip" "$ROOT"
           sha256sum "${ROOT}.zip" > "${ROOT}.zip.sha256"
@@ -136,10 +146,10 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SafarMa-RC4-V13-${{ github.event.pull_request.head.sha || github.sha }}
+          name: SafarMa-V15-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            SafarMa_RC4_V13_Release.zip
-            SafarMa_RC4_V13_Release.zip.sha256
+            SafarMa_V15_Release.zip
+            SafarMa_V15_Release.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
