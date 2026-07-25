@@ -8,7 +8,6 @@ services:
     dockerContext: ./belink-ai-v2/backend
     healthCheckPath: /ready
     autoDeploy: true
-    maxShutdownDelaySeconds: 60
     envVars:
       - key: OPENAI_API_KEY
         sync: false
