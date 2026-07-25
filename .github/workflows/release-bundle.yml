@@ -1,0 +1,136 @@
+name: Build SafarMa RC4 V13 release bundle
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-bundle.yml"
+      - "index.html"
+      - "app.html"
+      - "belink-ai-v2/**"
+      - "scripts/**"
+      - "*.js"
+      - "*.css"
+      - "*.html"
+      - "*.webmanifest"
+      - "render.yaml"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/release-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify release files contain no secrets
+        run: |
+          python - <<'PY'
+          import pathlib, re
+          roots = [pathlib.Path('.'), pathlib.Path('belink-ai-v2/backend')]
+          patterns = [
+              re.compile(r'sk-proj-[A-Za-z0-9_-]{20,}'),
+              re.compile(r'sk-[A-Za-z0-9]{32,}'),
+              re.compile(r'OPENAI_API_KEY\s*=\s*[^\s#]+'),
+          ]
+          allowed = {pathlib.Path('belink-ai-v2/backend/.env.example')}
+          hits = []
+          for path in pathlib.Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts or path in allowed:
+                  continue
+              if path.suffix.lower() not in {'.py','.js','.css','.html','.md','.yml','.yaml','.json','.webmanifest','.svg','.txt'}:
+                  continue
+              text = path.read_text(encoding='utf-8', errors='ignore')
+              if any(pattern.search(text) for pattern in patterns):
+                  hits.append(str(path))
+          if hits:
+              raise SystemExit('Potential secret in release files: ' + ', '.join(hits))
+          print('Secret scan passed.')
+          PY
+
+      - name: Assemble clean release directory
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ROOT="SafarMa_RC4_V13_Release"
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT/frontend" "$ROOT/backend" "$ROOT/docs" "$ROOT/scripts" "$ROOT/workflows"
+
+          cp index.html app.html legal.html plans.html manifest.webmanifest icon.svg sw.js "$ROOT/frontend/"
+          cp styles.css online-v2.css belink-ai.css safarma-final-v8.css "$ROOT/frontend/"
+          cp loader.js compat.js fix-data.js result-guard.js "$ROOT/frontend/"
+          cp app1a.js app1b.js app2a.js app2b.js app3.js app4.js app5.js "$ROOT/frontend/"
+          cp online-v2.js belink-ai.js safarma-specialists-v8.js belink-connected-v2.js "$ROOT/frontend/"
+          cp belink-runtime.js belink-client-runtime.js privacy-controls.js "$ROOT/frontend/"
+
+          cp -R belink-ai-v2/backend/. "$ROOT/backend/"
+          rm -rf "$ROOT/backend/.venv" "$ROOT/backend/data" "$ROOT/backend/.pytest_cache" "$ROOT/backend/__pycache__"
+          find "$ROOT/backend" -type d -name '__pycache__' -prune -exec rm -rf {} + || true
+          find "$ROOT/backend" -type f \( -name '*.sqlite3' -o -name '*.db' -o -name '.env' -o -name '.env.local' \) -delete
+
+          cp README.md DEPLOY_NOW.md FINAL_PRODUCTION_STATUS.md render.yaml "$ROOT/docs/"
+          cp release/STATUS.md "$ROOT/docs/RELEASE_STATUS.md"
+          cp -R scripts/. "$ROOT/scripts/"
+          cp .github/workflows/pages.yml .github/workflows/frontend-ci.yml .github/workflows/belink-ai-ci.yml "$ROOT/workflows/"
+          cp .github/workflows/production-verify.yml .github/workflows/backend-image.yml "$ROOT/workflows/"
+
+          cat > "$ROOT/README_FIRST.md" <<EOF
+          # SafarMa RC4 V13 Release
+
+          Product: **SafarMa | سفرِ ما**  
+          Intelligence layer: **Belink AI**  
+          Source commit: \`${RELEASE_SHA}\`
+
+          ## Folders
+
+          - \`frontend/\`: bilingual GitHub Pages/PWA application.
+          - \`backend/\`: FastAPI + OpenAI Agents SDK server.
+          - \`docs/\`: deployment, production and release status.
+          - \`scripts/\`: production verification tooling.
+          - \`workflows/\`: CI, Pages, image and production-verification workflows.
+
+          ## Security
+
+          No OpenAI API key is included. Store \`OPENAI_API_KEY\` only as a server-side hosting secret.
+          The frontend must never receive the key.
+          EOF
+
+          python - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path('SafarMa_RC4_V13_Release')
+          files = sorted(str(path.relative_to(root)) for path in root.rglob('*') if path.is_file())
+          payload = {
+              'product': 'SafarMa | سفرِ ما',
+              'powered_by': 'Belink AI',
+              'version': '8.2.0 RC4 / V13',
+              'source_commit': os.environ['RELEASE_SHA'],
+              'file_count': len(files),
+              'files': files,
+          }
+          (root / 'RELEASE_INFO.json').write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+
+      - name: Generate checksums and ZIP
+        run: |
+          set -euo pipefail
+          ROOT="SafarMa_RC4_V13_Release"
+          (cd "$ROOT" && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          zip -qr "${ROOT}.zip" "$ROOT"
+          sha256sum "${ROOT}.zip" > "${ROOT}.zip.sha256"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SafarMa-RC4-V13-${{ github.sha }}
+          path: |
+            SafarMa_RC4_V13_Release.zip
+            SafarMa_RC4_V13_Release.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
