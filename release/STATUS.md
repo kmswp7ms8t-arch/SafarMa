@@ -2,7 +2,7 @@
 
 Version: **8.2.0 RC4 · V13**
 
-Release commit: pending merge and final CI
+Release code commit: `8ff2a1c9539896632b18dcd3ceb7ad16851ac7ed`
 
 ## Completed
 
