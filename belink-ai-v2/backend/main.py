@@ -25,7 +25,7 @@ from auth import (
 )
 from memory import MemoryStore, PrivatePreferences, TripFeedback
 
-SERVICE_VERSION = "0.3.0"
+SERVICE_VERSION = "0.4.0"
 DEFAULT_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080"
 logger = logging.getLogger("belink-ai")
 
@@ -148,6 +148,8 @@ def health() -> dict[str, Any]:
         "model": os.getenv("BELINK_AI_MODEL", "gpt-5-mini"),
         "client_isolation": "signed",
         "persistent_session_secret": has_persistent_session_secret(),
+        "data_export": True,
+        "data_deletion": True,
     }
 
 
@@ -270,10 +272,15 @@ def delete_chat(session_id: str, identity: ClientIdentity = Depends(require_clie
     return {"deleted": memory.delete_session(session_id[:120], identity.client_id)}
 
 
+@app.get("/api/belink-ai/user-data", dependencies=[Depends(rate_limit)])
+def export_user_data(identity: ClientIdentity = Depends(require_client)) -> dict[str, Any]:
+    return memory.export_user_data(identity.client_id)
+
+
 @app.delete("/api/belink-ai/user-data", dependencies=[Depends(rate_limit)])
-def delete_all_user_data(identity: ClientIdentity = Depends(require_client)) -> dict[str, bool]:
-    memory.delete_all_user_data(identity.client_id)
-    return {"deleted": True}
+def delete_all_user_data(identity: ClientIdentity = Depends(require_client)) -> dict[str, Any]:
+    deleted = memory.delete_all_user_data(identity.client_id)
+    return {"deleted": True, "records": deleted}
 
 
 async def demo() -> None:
