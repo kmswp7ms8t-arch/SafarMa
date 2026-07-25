@@ -59,7 +59,7 @@ def test_export_contains_only_the_authenticated_clients_data(tmp_path, monkeypat
 
     first_data = first_export.json()
     second_data = second_export.json()
-    assert first_data["format"] == "safarma-user-data-v1"
+    assert first_data["format"] == "safarma-user-data-v2"
     assert first_data["anonymous_client_id"] != second_data["anonymous_client_id"]
     assert len(first_data["trips"]) == 1
     assert len(second_data["trips"]) == 1
@@ -67,6 +67,10 @@ def test_export_contains_only_the_authenticated_clients_data(tmp_path, monkeypat
     assert len(first_data["conversations"]) == 1
     assert first_data["conversations"][0]["messages"]
     assert second_data["conversations"][0]["messages"] == []
+    assert [row["event_type"] for row in first_data["usage_events"]] == ["chat_offline", "analysis_offline"]
+    assert [row["event_type"] for row in second_data["usage_events"]] == ["analysis_offline"]
+    assert first_data["cached_analyses"] == []
+    assert second_data["cached_analyses"] == []
 
 
 def test_delete_all_data_returns_receipt_and_leaves_empty_export(tmp_path, monkeypatch):
@@ -84,10 +88,13 @@ def test_delete_all_data_returns_receipt_and_leaves_empty_export(tmp_path, monke
     assert receipt["deleted"] is True
     assert receipt["records"]["trips"] == 1
     assert receipt["records"]["conversations"] == 1
+    assert receipt["records"]["usage_events"] == 2
 
     exported = client.get("/api/belink-ai/user-data", headers=headers)
     assert exported.status_code == 200
     data = exported.json()
     assert data["trips"] == []
     assert data["conversations"] == []
+    assert data["usage_events"] == []
+    assert data["cached_analyses"] == []
     assert data["preferences"]["accepted_destinations"] == []
