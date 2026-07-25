@@ -74,7 +74,7 @@
       localStorage.setItem("safarma-active-preset", PRESET.id);
       localStorage.removeItem("belink-ai-session-id");
     } catch (_) {}
-    location.href = `${location.pathname}?v=15&preset=${encodeURIComponent(PRESET.id)}`;
+    location.href = `${location.pathname}?v=16&preset=${encodeURIComponent(PRESET.id)}`;
   }
 
   function closeModal() {

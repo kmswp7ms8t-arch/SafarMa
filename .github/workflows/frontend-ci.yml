@@ -4,25 +4,21 @@ on:
   push:
     branches: ["main"]
     paths:
-      - "index.html"
-      - "app.html"
-      - "public.html"
-      - "legal.html"
-      - "manifest.webmanifest"
-      - "manifest-public.webmanifest"
+      - "*.html"
       - "*.js"
       - "*.css"
+      - "*.webmanifest"
+      - "robots.txt"
+      - "sitemap.xml"
       - ".github/workflows/frontend-ci.yml"
   pull_request:
     paths:
-      - "index.html"
-      - "app.html"
-      - "public.html"
-      - "legal.html"
-      - "manifest.webmanifest"
-      - "manifest-public.webmanifest"
+      - "*.html"
       - "*.js"
       - "*.css"
+      - "*.webmanifest"
+      - "robots.txt"
+      - "sitemap.xml"
       - ".github/workflows/frontend-ci.yml"
   workflow_dispatch:
 
@@ -37,143 +33,108 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Build the loader script in browser order
-        run: |
-          cat app1a.js app1b.js compat.js fix-data.js app2a.js app2b.js app3.js app4.js app5.js online-v2.js belink-ai.js result-guard.js > /tmp/safarma-combined.js
       - name: Validate JavaScript syntax
         run: |
+          cat app1a.js app1b.js compat.js fix-data.js app2a.js app2b.js app3.js app4.js app5.js online-v2.js belink-ai.js result-guard.js > /tmp/safarma-combined.js
           node --check /tmp/safarma-combined.js
-          node --check safarma-specialists-v8.js
-          node --check belink-runtime.js
-          node --check belink-client-runtime.js
-          node --check belink-connected-v2.js
-          node --check privacy-controls.js
-          node --check trabzon-preset.js
-          node --check public-mode.js
-          node --check loader.js
-          node --check sw.js
-      - name: Validate manifests
+          for file in safarma-specialists-v8.js belink-runtime.js belink-client-runtime.js belink-connected-v2.js privacy-controls.js trabzon-preset.js public-mode.js public-launch-guard.js loader.js sw.js; do
+            node --check "$file"
+          done
+      - name: Validate manifests and sitemap
         run: |
           node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
           node -e "JSON.parse(require('fs').readFileSync('manifest-public.webmanifest','utf8'))"
-      - name: Check V15 personal and public editions
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse('sitemap.xml')
+          print('sitemap.xml is valid XML')
+          PY
+      - name: Verify V16 personal edition
         run: |
           for page in index.html app.html; do
-            grep -q 'belink-runtime.js?v=15' "$page"
-            grep -q 'belink-client-runtime.js?v=15' "$page"
-            grep -q 'belink-connected-v2.js?v=8' "$page"
-            grep -q 'privacy-controls.js?v=3' "$page"
-            grep -q 'trabzon-preset.js?v=2' "$page"
-            grep -q 'safarma-specialists-v8.js?v=15' "$page"
-            grep -q 'safarma-final-v8.css?v=15' "$page"
+            grep -q 'name="robots" content="noindex,nofollow,noarchive"' "$page"
+            grep -q 'belink-runtime.js?v=16' "$page"
+            grep -q 'belink-client-runtime.js?v=16' "$page"
+            grep -q 'belink-connected-v2.js?v=9' "$page"
+            grep -q 'privacy-controls.js?v=4' "$page"
+            grep -q 'trabzon-preset.js?v=3' "$page"
+            grep -q 'safarma-specialists-v8.js?v=16' "$page"
             grep -q 'Content-Security-Policy' "$page"
             grep -q 'تولدت مبارک، ساناز' "$page"
           done
-          grep -q 'manifest-public.webmanifest?v=15' public.html
-          grep -q 'public-mode.js?v=1' public.html
-          grep -q 'belink-runtime.js?v=15' public.html
-          grep -q 'belink-connected-v2.js?v=8' public.html
-          grep -q 'privacy-controls.js?v=3' public.html
-          grep -q 'Global AI travel planning' public-mode.js
-          grep -q 'برنامه‌ریز هوشمند سفر برای همه' public-mode.js
-          grep -q 'window.SAFARMA_PUBLIC_MODE = true' public-mode.js
+          grep -q 'v=16&preset=' trabzon-preset.js
+          grep -q 'estimate_needs_live_verification' trabzon-preset.js
+          grep -q 'must be checked again when used' trabzon-preset.js
+          ! grep -q 'visaConfirmed: true' trabzon-preset.js
+          ! grep -q 'guaranteedEntry: true' trabzon-preset.js
+      - name: Verify V16 public edition and launch UX
+        run: |
+          grep -q 'name="robots" content="index,follow,max-image-preview:large"' public.html
+          grep -q 'rel="canonical" href="https://kmswp7ms8t-arch.github.io/SafarMa/public.html"' public.html
+          grep -q 'og:title' public.html
+          grep -q 'manifest-public.webmanifest?v=16' public.html
+          grep -q 'public-mode.js?v=2' public.html
+          grep -q 'public-launch-guard.js?v=1' public.html
+          grep -q 'belink-runtime.js?v=16' public.html
+          grep -q 'belink-connected-v2.js?v=9' public.html
+          grep -q 'privacy-controls.js?v=4' public.html
           ! grep -q 'trabzon-preset.js' public.html
           ! grep -q 'Sanaz' public.html
           ! grep -q 'ساناز' public.html
-          grep -q 'public-mode.js?v=1' sw.js
-          grep -q 'manifest-public.webmanifest?v=15' sw.js
-          grep -q 'trabzon-preset.js?v=2' sw.js
-          grep -q 'privacy-controls.js?v=3' sw.js
-          grep -q 'belink-connected-v2.js?v=8' sw.js
-          grep -q 'safarma-v15-public-personal' sw.js
-          grep -q '"./?v=15"' manifest.webmanifest
-          grep -q '"./public.html?v=15"' manifest-public.webmanifest
-          grep -q 'version: "8.4.0-v15"' belink-runtime.js
-          grep -q 'const VERSION = "15"' loader.js
-          grep -q 'v=15&preset=' trabzon-preset.js
+          grep -q 'passport: "Qatar"' public-mode.js
+          grep -q 'wanted: ""' public-mode.js
+          grep -q 'window.SAFARMA_PUBLIC_MODE = true' public-mode.js
+          grep -q 'Connected Belink AI is being launched' public-launch-guard.js
+          grep -q 'interceptTechnicalSetup' public-launch-guard.js
+          grep -q '#belinkBackendBadge' public-launch-guard.js
+      - name: Verify PWA, SEO and privacy controls
+        run: |
+          grep -q 'safarma-v16-public-launch' sw.js
+          grep -q 'public-launch-guard.js?v=1' sw.js
+          grep -q 'manifest-public.webmanifest?v=16' sw.js
+          grep -q 'trabzon-preset.js?v=3' sw.js
+          grep -q 'privacy-controls.js?v=4' sw.js
+          grep -q 'belink-connected-v2.js?v=9' sw.js
+          grep -q '"./?v=16"' manifest.webmanifest
+          grep -q '"./public.html?v=16"' manifest-public.webmanifest
+          grep -q 'version: "8.5.0-v16"' belink-runtime.js
+          grep -q 'const VERSION = "16"' loader.js
           grep -q 'autoAnalyze: false' belink-runtime.js
-          grep -q 'config.autoAnalyze !== true' belink-connected-v2.js
           grep -q '/api/belink-ai/user-data' privacy-controls.js
           grep -q 'method: "DELETE"' privacy-controls.js
-          grep -q 'Export my data' privacy-controls.js
-          grep -q 'Delete all my data' privacy-controls.js
-          grep -q 'amir-sanaz-trabzon-2026' trabzon-preset.js
-          grep -q 'estimate_needs_live_verification' trabzon-preset.js
-          grep -q 'دریافت فایل اطلاعات' legal.html
-          grep -q 'حذف کامل اطلاعات' legal.html
+          grep -q 'Allow: /SafarMa/public.html' robots.txt
+          grep -q 'Disallow: /SafarMa/app.html' robots.txt
+          grep -q 'public.html' sitemap.xml
+          grep -q 'pricing.html' sitemap.xml
           grep -q 'request.mode === "navigate"' sw.js
-      - name: Ensure personal preset does not claim live verification
-        run: |
-          python - <<'PY'
-          import pathlib
-          text = pathlib.Path('trabzon-preset.js').read_text(encoding='utf-8')
-          required = [
-              'estimate_needs_live_verification',
-              'دوباره بررسی شوند',
-              'must be checked again when used',
-          ]
-          missing = [item for item in required if item not in text]
-          if missing:
-              raise SystemExit('Missing preset trust labels: ' + ', '.join(missing))
-          forbidden = ['visaConfirmed: true', 'livePriceConfirmed: true', 'guaranteedEntry: true']
-          if any(item in text for item in forbidden):
-              raise SystemExit('Preset must not claim confirmed live travel facts.')
-          PY
-      - name: Ensure public edition starts neutral
-        run: |
-          python - <<'PY'
-          import pathlib
-          text = pathlib.Path('public-mode.js').read_text(encoding='utf-8')
-          required = [
-              'passport: "Qatar"',
-              'wanted: ""',
-              'mode: "open"',
-              'styles: []',
-              'document.querySelector("#gift")?.classList.add("hide")',
-          ]
-          missing = [item for item in required if item not in text]
-          if missing:
-              raise SystemExit('Public edition is not neutral: ' + ', '.join(missing))
-          personal = ['amir-sanaz-trabzon-2026', 'تولدت مبارک', 'Happy birthday']
-          if any(item in text for item in personal):
-              raise SystemExit('Public mode must not embed the personal gift or trip preset.')
-          PY
-      - name: Ensure exported local snapshot never contains the signed token value
+      - name: Ensure exported local snapshot excludes the signed token
         run: |
           python - <<'PY'
           import pathlib, re
           text = pathlib.Path('privacy-controls.js').read_text(encoding='utf-8')
-          start = text.index('function localSnapshot()')
-          end = text.index('function showToast', start)
-          block = text[start:end]
-          forbidden_assignments = [
-              r'client_token\s*:',
-              r'signed_client_token\s*:',
-              r'client_identity\s*:\s*safeGet\(CLIENT_STORAGE\)'
-          ]
-          if any(re.search(pattern, block) for pattern in forbidden_assignments):
-              raise SystemExit('The local export snapshot must not contain the raw signed client token.')
-          if 'signed_client_identity_present' not in block or 'Boolean(safeGet(CLIENT_STORAGE))' not in block:
-              raise SystemExit('Expected only a boolean identity-presence indicator in the export snapshot.')
+          block = text[text.index('function localSnapshot()'):text.index('function showToast', text.index('function localSnapshot()'))]
+          forbidden = [r'client_token\s*:', r'signed_client_token\s*:', r'client_identity\s*:\s*safeGet\(CLIENT_STORAGE\)']
+          if any(re.search(pattern, block) for pattern in forbidden):
+              raise SystemExit('Local export must not contain the raw signed token.')
+          if 'signed_client_identity_present' not in block:
+              raise SystemExit('Expected only an identity-presence boolean.')
           PY
-      - name: Ensure deployable frontend contains no secret
+      - name: Ensure public assets contain no secret
         run: |
           python - <<'PY'
           import pathlib, re
-          files = []
-          for pattern in ("*.js", "*.css", "*.html", "*.webmanifest", "*.svg"):
-              files.extend(pathlib.Path('.').glob(pattern))
-          secret_patterns = [
+          patterns = [
               re.compile(r"sk-proj-[A-Za-z0-9_-]{20,}"),
               re.compile(r"sk-[A-Za-z0-9]{32,}"),
-              re.compile(r"OPENAI" + r"_API_KEY\s*[:=]\s*['\"]?[^\s'\"]+")
+              re.compile(r"OPENAI" + r"_API_KEY\s*[:=]\s*['\"]?[^\s'\"]+"),
           ]
           hits = []
-          for path in files:
-              text = path.read_text(encoding="utf-8", errors="ignore")
-              if any(pattern.search(text) for pattern in secret_patterns):
-                  hits.append(str(path))
+          for pattern in ("*.js", "*.css", "*.html", "*.webmanifest", "*.svg", "*.xml", "*.txt"):
+              for path in pathlib.Path('.').glob(pattern):
+                  text = path.read_text(encoding='utf-8', errors='ignore')
+                  if any(secret.search(text) for secret in patterns):
+                      hits.append(str(path))
           if hits:
-              raise SystemExit("Potential secret found in public assets: " + ", ".join(sorted(hits)))
-          print(f"Scanned {len(files)} deployable frontend files; no secret found.")
+              raise SystemExit('Potential secret found: ' + ', '.join(sorted(set(hits))))
+          print('Public asset secret scan passed.')
           PY

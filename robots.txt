@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /SafarMa/public.html
+Allow: /SafarMa/pricing.html
+Allow: /SafarMa/legal.html
+Disallow: /SafarMa/app.html
+
+Sitemap: https://kmswp7ms8t-arch.github.io/SafarMa/sitemap.xml

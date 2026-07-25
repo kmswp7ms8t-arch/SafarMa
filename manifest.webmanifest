@@ -3,7 +3,7 @@
   "name": "SafarMa | سفرِ ما — Powered by Belink AI",
   "short_name": "SafarMa",
   "description": "Bilingual AI travel planning powered by Belink AI.",
-  "start_url": "./?v=15",
+  "start_url": "./?v=16",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",

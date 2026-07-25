@@ -1,4 +1,4 @@
-name: Build SafarMa V15 release bundle
+name: Build SafarMa V16 release bundle
 
 on:
   pull_request:
@@ -8,6 +8,8 @@ on:
       - "app.html"
       - "public.html"
       - "pricing.html"
+      - "robots.txt"
+      - "sitemap.xml"
       - "belink-ai-v2/**"
       - "scripts/**"
       - "*.js"
@@ -44,7 +46,7 @@ jobs:
           for path in pathlib.Path('.').rglob('*'):
               if not path.is_file() or '.git' in path.parts or path in allowed:
                   continue
-              if path.suffix.lower() not in {'.py','.js','.css','.html','.md','.yml','.yaml','.json','.webmanifest','.svg','.txt'}:
+              if path.suffix.lower() not in {'.py','.js','.css','.html','.md','.yml','.yaml','.json','.webmanifest','.svg','.txt','.xml'}:
                   continue
               text = path.read_text(encoding='utf-8', errors='ignore')
               if any(pattern.search(text) for pattern in patterns):
@@ -59,16 +61,16 @@ jobs:
           RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          ROOT="SafarMa_V15_Release"
+          ROOT="SafarMa_V16_Release"
           rm -rf "$ROOT"
           mkdir -p "$ROOT/frontend" "$ROOT/backend" "$ROOT/docs" "$ROOT/scripts" "$ROOT/workflows"
 
-          cp index.html app.html public.html pricing.html legal.html plans.html manifest.webmanifest manifest-public.webmanifest icon.svg sw.js "$ROOT/frontend/"
+          cp index.html app.html public.html pricing.html legal.html plans.html manifest.webmanifest manifest-public.webmanifest icon.svg sw.js robots.txt sitemap.xml .nojekyll "$ROOT/frontend/"
           cp styles.css online-v2.css belink-ai.css safarma-final-v8.css "$ROOT/frontend/"
           cp loader.js compat.js fix-data.js result-guard.js "$ROOT/frontend/"
           cp app1a.js app1b.js app2a.js app2b.js app3.js app4.js app5.js "$ROOT/frontend/"
           cp online-v2.js belink-ai.js safarma-specialists-v8.js belink-connected-v2.js "$ROOT/frontend/"
-          cp belink-runtime.js belink-client-runtime.js privacy-controls.js trabzon-preset.js public-mode.js "$ROOT/frontend/"
+          cp belink-runtime.js belink-client-runtime.js privacy-controls.js trabzon-preset.js public-mode.js public-launch-guard.js "$ROOT/frontend/"
 
           cp -R belink-ai-v2/backend/. "$ROOT/backend/"
           rm -rf "$ROOT/backend/.venv" "$ROOT/backend/data" "$ROOT/backend/.pytest_cache" "$ROOT/backend/__pycache__"
@@ -90,7 +92,7 @@ jobs:
           done
 
           cat > "$ROOT/README_FIRST.md" <<EOF
-          # SafarMa V15 Release
+          # SafarMa V16 Release
 
           Product: **SafarMa | سفرِ ما**  
           Intelligence layer: **Belink AI**  
@@ -98,8 +100,8 @@ jobs:
 
           ## Published editions
 
-          - \`frontend/index.html\`: personal gift edition for Amir and Sanaz, including the optional Trabzon preset.
-          - \`frontend/public.html\`: general public/business edition with neutral onboarding and no personal birthday or preset content.
+          - \`frontend/index.html\`: private personal gift edition; marked noindex.
+          - \`frontend/public.html\`: general public/business edition with neutral onboarding, SEO metadata and launch-safe backend behavior.
           - \`frontend/pricing.html\`: pilot business plans and payment-readiness notice.
 
           ## Folders
@@ -118,13 +120,13 @@ jobs:
 
           python - <<'PY'
           import json, os, pathlib
-          root = pathlib.Path('SafarMa_V15_Release')
+          root = pathlib.Path('SafarMa_V16_Release')
           files = sorted(str(path.relative_to(root)) for path in root.rglob('*') if path.is_file())
           files_with_manifest = sorted([*files, 'RELEASE_INFO.json'])
           payload = {
               'product': 'SafarMa | سفرِ ما',
               'powered_by': 'Belink AI',
-              'version': '8.4.0 / V15',
+              'version': '8.5.0 / V16',
               'source_commit': os.environ['RELEASE_SHA'],
               'editions': {
                   'personal': 'frontend/index.html',
@@ -141,7 +143,7 @@ jobs:
       - name: Generate checksums and ZIP
         run: |
           set -euo pipefail
-          ROOT="SafarMa_V15_Release"
+          ROOT="SafarMa_V16_Release"
           (cd "$ROOT" && find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
           zip -qr "${ROOT}.zip" "$ROOT"
           sha256sum "${ROOT}.zip" > "${ROOT}.zip.sha256"
@@ -149,10 +151,10 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SafarMa-V15-${{ github.event.pull_request.head.sha || github.sha }}
+          name: SafarMa-V16-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
-            SafarMa_V15_Release.zip
-            SafarMa_V15_Release.zip.sha256
+            SafarMa_V16_Release.zip
+            SafarMa_V16_Release.zip.sha256
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

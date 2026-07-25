@@ -1,4 +1,4 @@
-name: Verify SafarMa V15 production
+name: Verify SafarMa V16 production
 
 on:
   workflow_dispatch:
@@ -8,9 +8,9 @@ on:
         required: true
         type: string
       frontend_url:
-        description: "SafarMa V15 public or personal URL"
+        description: "SafarMa V16 public or personal URL"
         required: true
-        default: "https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=15"
+        default: "https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=16"
         type: string
       privacy_smoke:
         description: "Run one connected analysis, export its temporary data, then delete it"
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Compile V15 verification script
+      - name: Compile V16 verification script
         run: python -m py_compile scripts/verify-production.py
       - name: Verify without invoking AI
         if: ${{ !inputs.privacy_smoke }}
@@ -50,7 +50,7 @@ jobs:
       - name: Publish result summary
         if: always()
         run: |
-          echo "## SafarMa V15 production verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "## SafarMa V16 production verification" >> "$GITHUB_STEP_SUMMARY"
           echo "Frontend: ${{ inputs.frontend_url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Backend host supplied: yes" >> "$GITHUB_STEP_SUMMARY"
           echo "Disposable AI/privacy smoke requested: ${{ inputs.privacy_smoke }}" >> "$GITHUB_STEP_SUMMARY"

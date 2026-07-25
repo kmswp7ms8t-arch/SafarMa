@@ -1,42 +1,38 @@
 # SafarMa + Belink AI — Release status
 
-Version: **8.4.0 · V15**
+Version: **8.5.0 · V16**
 
-Release code commit: `b75aaa23b6e4a054ba77567fe01b41fe51f2a4a8`
+Release commit: pending merge and final CI
 
 ## Completed
 
 - SafarMa remains the primary product identity; Belink AI remains its intelligence layer.
 - The approved futuristic interface, Persian/English and RTL/LTR are preserved.
-- The personal edition keeps the birthday opening for Sanaz and the optional Amir-and-Sanaz Trabzon preset.
-- A separate general public/business edition starts directly with neutral travel onboarding and contains no birthday or personal-preset content.
-- Public visitors are routed to a dedicated pilot pricing page rather than the personal plans path.
-- Both editions use a unified V15 PWA cache with exact versioned assets and separate install manifests.
-- Belink Commander supports manual connected analysis, contextual chat and transparent offline fallback.
-- Pilot, Tour Leader, Visa Officer, Safety Analyst, Budget Controller and Concierge remain integrated.
-- Trips, preferences and chat sessions are isolated per signed anonymous browser client.
-- Private data endpoints require a valid signed `X-Belink-Client` token.
-- Users can export local data plus their authenticated browser identity's server data as JSON.
-- Complete deletion removes identified server preferences, trips and conversations before clearing local SafarMa data and caches.
-- Export files never contain the OpenAI API key or the raw signed browser token.
-- Date windows, budget totals, source claims and official evidence requirements are validated.
-- Connected AI analysis requires explicit user action and has bounded turn limits.
-- CSP, referrer and browser permissions restrictions are active.
-- The production container runs as a non-root user and has an internal health check.
-- Render Blueprint generates a persistent signing secret and uses `/ready` for deployment health.
-- Frontend V15 CI passed JavaScript, both manifests, personal/public separation, PWA references, privacy controls and secret scans.
-- Backend CI passed Python 3.11 and 3.13 tests, readiness smoke checks, production-verifier compilation and Docker production build.
-- The V15 release bundle passed its secret scan, assembly and checksum workflow.
+- The personal edition retains the birthday opening and optional Amir-and-Sanaz Trabzon preset.
+- The personal entry points are marked `noindex` so search engines are directed toward the business edition.
+- The public/business edition has neutral onboarding, canonical metadata, Open Graph metadata, a search-engine policy and a sitemap.
+- Public visitors do not see a technical backend-configuration prompt while the connected AI server is not deployed.
+- Until the backend is connected, the public edition displays a launch-safe notice and keeps the built-in planner available.
+- Technical GitHub support links are hidden from ordinary public users.
+- The public pricing page remains visible, while charging users remains disabled pending commercial setup.
+- Both editions use a unified V16 PWA cache with exact versioned assets and separate install manifests.
+- Belink Commander, Pilot, Tour Leader, Visa Officer, Safety Analyst, Budget Controller and Concierge remain integrated.
+- Connected analysis requires explicit user action and is rate- and turn-limited.
+- Trips, preferences and chats remain isolated per signed anonymous browser identity.
+- Privacy export and complete deletion remain available.
+- No OpenAI secret or raw signed client token is embedded in public files.
+- Production verification supports both V16 editions.
+- The downloadable V16 bundle includes frontend, backend, SEO files, verification scripts and checksums.
 
-## Published frontend editions
+## Frontend editions
 
 Personal gift edition:
 
-`https://kmswp7ms8t-arch.github.io/SafarMa/?v=15`
+`https://kmswp7ms8t-arch.github.io/SafarMa/?v=16`
 
 General public/business edition:
 
-`https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=15`
+`https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=16`
 
 Pilot pricing page:
 
@@ -48,16 +44,16 @@ Repository Blueprint:
 
 `https://render.com/deploy?repo=https://github.com/kmswp7ms8t-arch/SafarMa`
 
-The hosting-account owner must authorize service creation and enter the server-side `OPENAI_API_KEY`. The Blueprint automatically supplies the database disk, CORS origin, production mode, generated session-signing secret, turn limits and readiness settings.
+The hosting-account owner must authorize service creation and enter the server-side `OPENAI_API_KEY`. The Blueprint supplies the database disk, CORS origin, production mode, signing secret, rate limits, turn limits and readiness settings.
 
 After Render returns the backend HTTPS URL, open the required edition once with:
 
 Personal:
 
-`https://kmswp7ms8t-arch.github.io/SafarMa/?v=15&api=https://YOUR-BACKEND-URL`
+`https://kmswp7ms8t-arch.github.io/SafarMa/?v=16&api=https://YOUR-BACKEND-URL`
 
 Public:
 
-`https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=15&api=https://YOUR-BACKEND-URL`
+`https://kmswp7ms8t-arch.github.io/SafarMa/public.html?v=16&api=https://YOUR-BACKEND-URL`
 
-The browser stores only the public backend URL and a signed anonymous client token. It never stores the OpenAI API key. Export data before clearing the browser or changing devices because this anonymous identity is device/browser-specific.
+The browser stores the public backend URL and a signed anonymous client token, never the OpenAI key.
