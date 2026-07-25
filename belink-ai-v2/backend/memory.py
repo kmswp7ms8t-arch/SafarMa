@@ -53,6 +53,7 @@ class MemoryStore:
 
     def _init_schema(self) -> None:
         with self._lock, self._connect() as connection:
+            # Tables must be created or migrated before indexes reference new columns.
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS preferences (
                     user_id TEXT PRIMARY KEY,
@@ -76,13 +77,22 @@ class MemoryStore:
                     messages_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
-                CREATE INDEX IF NOT EXISTS idx_trips_user_created ON trips(user_id, created_at DESC);
-                CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC);
             """)
-            # Migration for RC2 databases created before per-client isolation.
+
+            # RC2 conversations did not have a user_id column. Existing rows are
+            # deliberately quarantined under `legacy`; no new anonymous client can
+            # read them without a deliberate administrative migration.
             if "user_id" not in self._columns(connection, "conversations"):
-                connection.execute("ALTER TABLE conversations ADD COLUMN user_id TEXT NOT NULL DEFAULT 'legacy'")
-                connection.execute("CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC)")
+                connection.execute(
+                    "ALTER TABLE conversations ADD COLUMN user_id TEXT NOT NULL DEFAULT 'legacy'"
+                )
+
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_trips_user_created ON trips(user_id, created_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, updated_at DESC)"
+            )
 
     def ready(self) -> bool:
         try:
@@ -180,11 +190,23 @@ class MemoryStore:
     ) -> str:
         identifier = session_id or uuid.uuid4().hex
         with self._lock, self._connect() as connection:
+            if session_id:
+                owner = connection.execute(
+                    "SELECT user_id FROM conversations WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                if owner and owner["user_id"] != user_id:
+                    # Never let one anonymous client overwrite or take ownership of
+                    # another client's conversation, even if a session id leaks.
+                    identifier = uuid.uuid4().hex
+
             connection.execute(
                 """INSERT INTO conversations(session_id, user_id, profile_json, decision_json, messages_json, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(session_id) DO UPDATE SET user_id=excluded.user_id, profile_json=excluded.profile_json,
-                decision_json=excluded.decision_json, messages_json=excluded.messages_json, updated_at=excluded.updated_at""",
+                ON CONFLICT(session_id) DO UPDATE SET profile_json=excluded.profile_json,
+                decision_json=excluded.decision_json, messages_json=excluded.messages_json,
+                updated_at=excluded.updated_at
+                WHERE conversations.user_id = excluded.user_id""",
                 (
                     identifier,
                     user_id,
