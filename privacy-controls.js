@@ -4,8 +4,7 @@
   const runtime = window.BELINK_RUNTIME_CONFIG || {};
   const API_STORAGE = "belink-ai-api-base";
   const CLIENT_STORAGE = "belink-ai-client-token";
-  const SESSION_STORAGE = "belink-ai-session-id";
-  const LOCAL_PREFIXES = ["sm-", "belink-ai-", "safarma-"];
+  const isPublicEdition = window.SAFARMA_PUBLIC_MODE === true;
   const qs = (selector, root = document) => root.querySelector(selector);
   const isFa = () => document.documentElement.lang === "fa" || document.documentElement.dir === "rtl";
   let busy = false;
@@ -40,6 +39,7 @@
 
   function localSnapshot() {
     return {
+      edition: isPublicEdition ? "public" : "personal",
       language: safeGet("sm-lang") || null,
       travel_profile: parseJson(safeGet("sm-profile")),
       backend_configured: Boolean(apiBase()),
@@ -59,11 +59,12 @@
 
   function downloadJson(payload) {
     const date = new Date().toISOString().slice(0, 10);
+    const edition = isPublicEdition ? "public" : "personal";
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `SafarMa-data-${date}.json`;
+    anchor.download = `SafarMa-${edition}-data-${date}.json`;
     anchor.rel = "noopener";
     document.body.appendChild(anchor);
     anchor.click();
@@ -81,7 +82,7 @@
       if (base && safeGet(CLIENT_STORAGE)) {
         const response = await fetch(`${base}${runtime.userDataPath || "/api/belink-ai/user-data"}`, {
           method: "GET",
-          headers: { "Accept": "application/json" },
+          headers: { Accept: "application/json" },
           cache: "no-store",
         });
         const data = await response.json().catch(() => ({}));
@@ -89,25 +90,22 @@
         server = data;
       }
       downloadJson({
-        format: "safarma-complete-export-v1",
+        format: "safarma-complete-export-v2",
         exported_at: new Date().toISOString(),
         local: localSnapshot(),
         server,
         note: server
-          ? "The server export is scoped to this browser's signed anonymous client identity."
-          : "No accessible server-side identity was available; this export contains local device data only.",
+          ? "The server export is scoped to this edition's signed anonymous browser identity."
+          : "No accessible server-side identity was available; this export contains local edition data only.",
       });
       showToast(
         server
           ? (isFa() ? "فایل کامل اطلاعات SafarMa آماده شد." : "Your complete SafarMa data file is ready.")
-          : (isFa() ? "فایل اطلاعات دستگاه آماده شد؛ داده سرور قابل شناسایی نبود." : "Local data was exported; no server identity was available."),
+          : (isFa() ? "فایل اطلاعات این نسخه آماده شد؛ داده سرور قابل شناسایی نبود." : "This edition's local data was exported; no server identity was available."),
         "success"
       );
     } catch (error) {
-      showToast(
-        `${isFa() ? "دریافت اطلاعات انجام نشد" : "Data export failed"}: ${String(error.message || error)}`,
-        "error"
-      );
+      showToast(`${isFa() ? "دریافت اطلاعات انجام نشد" : "Data export failed"}: ${String(error.message || error)}`, "error");
     } finally {
       busy = false;
       updateDisabledState(false);
@@ -122,12 +120,21 @@
     } catch (_) {}
   }
 
+  function keyBelongsToEdition(key) {
+    if (!key || key === API_STORAGE) return false;
+    if (isPublicEdition) {
+      return key.startsWith("sm-public-") || key.startsWith("belink-ai-public-") || key.startsWith("safarma-public-");
+    }
+    if (key.startsWith("sm-public-") || key.startsWith("belink-ai-public-") || key.startsWith("safarma-public-")) return false;
+    return key.startsWith("sm-") || key.startsWith("belink-ai-") || key.startsWith("safarma-");
+  }
+
   function clearLocalAppData() {
     try {
       const keys = [];
       for (let index = 0; index < localStorage.length; index += 1) {
         const key = localStorage.key(index);
-        if (key && LOCAL_PREFIXES.some((prefix) => key.startsWith(prefix))) keys.push(key);
+        if (keyBelongsToEdition(key)) keys.push(key);
       }
       keys.forEach((key) => localStorage.removeItem(key));
     } catch (_) {}
@@ -135,7 +142,7 @@
       const keys = [];
       for (let index = 0; index < sessionStorage.length; index += 1) {
         const key = sessionStorage.key(index);
-        if (key && LOCAL_PREFIXES.some((prefix) => key.startsWith(prefix))) keys.push(key);
+        if (isPublicEdition ? key?.startsWith("safarma-public-") : key?.startsWith("safarma-") && !key.startsWith("safarma-public-")) keys.push(key);
       }
       keys.forEach((key) => sessionStorage.removeItem(key));
     } catch (_) {}
@@ -145,13 +152,11 @@
   async function deleteData() {
     if (busy) return;
     const warning = isFa()
-      ? "این کار پاسخ‌های فرم، تاریخچه سفر، گفت‌وگوها و حافظه متصل این مرورگر را حذف می‌کند و قابل بازگشت نیست. ابتدا فایل اطلاعاتت را دریافت کن. ادامه می‌دهی؟"
-      : "This permanently deletes questionnaire answers, trips, chats and connected memory for this browser identity. Export your data first. Continue?";
+      ? `این کار پاسخ‌های فرم، تاریخچه سفر، گفت‌وگوها و حافظه متصل نسخه ${isPublicEdition ? "عمومی" : "شخصی"} را حذف می‌کند و قابل بازگشت نیست. ابتدا فایل اطلاعاتت را دریافت کن. ادامه می‌دهی؟`
+      : `This permanently deletes questionnaire answers, trips, chats and connected memory for the ${isPublicEdition ? "public" : "personal"} edition. Export first. Continue?`;
     if (!window.confirm(warning)) return;
 
-    const typed = window.prompt(
-      isFa() ? "برای تأیید نهایی کلمه «حذف» را بنویس:" : "Type DELETE to confirm permanent deletion:"
-    );
+    const typed = window.prompt(isFa() ? "برای تأیید نهایی کلمه «حذف» را بنویس:" : "Type DELETE to confirm permanent deletion:");
     if ((isFa() && typed !== "حذف") || (!isFa() && typed !== "DELETE")) {
       showToast(isFa() ? "حذف لغو شد." : "Deletion cancelled.");
       return;
@@ -166,41 +171,33 @@
       if (hasIdentity) {
         const response = await fetch(`${base}${runtime.userDataPath || "/api/belink-ai/user-data"}`, {
           method: "DELETE",
-          headers: { "Accept": "application/json" },
+          headers: { Accept: "application/json" },
           cache: "no-store",
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data.detail || `HTTP ${response.status}`);
-        }
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
         serverReceipt = data;
       }
 
       clearLocalAppData();
       await clearAppCaches();
       try {
-        sessionStorage.setItem("safarma-deletion-receipt", JSON.stringify({
+        sessionStorage.setItem(isPublicEdition ? "safarma-public-deletion-receipt" : "safarma-deletion-receipt", JSON.stringify({
           deleted_at: new Date().toISOString(),
+          edition: isPublicEdition ? "public" : "personal",
           server: serverReceipt,
         }));
       } catch (_) {}
-      location.replace(`${location.pathname}?v=13&deleted=1`);
+      location.replace(`${location.pathname}?v=16&deleted=1`);
     } catch (error) {
-      // Do not discard the client token when server deletion fails; otherwise the
-      // anonymous server data could become inaccessible and impossible to delete.
-      showToast(
-        `${isFa() ? "حذف کامل انجام نشد؛ اطلاعات دستگاه حفظ شد" : "Complete deletion failed; local identity was preserved"}: ${String(error.message || error)}`,
-        "error"
-      );
+      showToast(`${isFa() ? "حذف کامل انجام نشد؛ اطلاعات دستگاه حفظ شد" : "Complete deletion failed; local identity was preserved"}: ${String(error.message || error)}`, "error");
       busy = false;
       updateDisabledState(false);
     }
   }
 
   function updateDisabledState(disabled) {
-    [qs("#safarmaExportData"), qs("#safarmaDeleteData")].forEach((button) => {
-      if (button) button.disabled = disabled;
-    });
+    [qs("#safarmaExportData"), qs("#safarmaDeleteData")].forEach((button) => { if (button) button.disabled = disabled; });
   }
 
   function renderControls() {
@@ -214,11 +211,13 @@
       app.appendChild(panel);
     }
     const lang = isFa() ? "fa" : "en";
-    if (panel.dataset.lang === lang) return;
+    const edition = isPublicEdition ? "public" : "personal";
+    if (panel.dataset.lang === lang && panel.dataset.edition === edition) return;
     panel.dataset.lang = lang;
+    panel.dataset.edition = edition;
     panel.innerHTML = isFa()
-      ? `<div><small>کنترل اطلاعات</small><b>اطلاعات SafarMa در اختیار شماست</b><p>قبل از پاک‌کردن مرورگر یا تغییر دستگاه، فایل اطلاعات را دریافت کن. شناسه سرور ناشناس و وابسته به همین مرورگر است.</p></div><div class="safarma-privacy-actions"><button id="safarmaExportData" type="button">دریافت فایل اطلاعات</button><button id="safarmaDeleteData" type="button" class="danger">حذف کامل اطلاعات</button></div>`
-      : `<div><small>DATA CONTROL</small><b>Your SafarMa data belongs to you</b><p>Export before clearing the browser or changing devices. The anonymous server identity belongs to this browser.</p></div><div class="safarma-privacy-actions"><button id="safarmaExportData" type="button">Export my data</button><button id="safarmaDeleteData" type="button" class="danger">Delete all my data</button></div>`;
+      ? `<div><small>کنترل اطلاعات · ${isPublicEdition ? "نسخه عمومی" : "نسخه شخصی"}</small><b>اطلاعات SafarMa در اختیار شماست</b><p>داده‌های این نسخه از نسخه دیگر جداست. قبل از پاک‌کردن مرورگر یا تغییر دستگاه، فایل اطلاعات را دریافت کن.</p></div><div class="safarma-privacy-actions"><button id="safarmaExportData" type="button">دریافت فایل اطلاعات</button><button id="safarmaDeleteData" type="button" class="danger">حذف اطلاعات این نسخه</button></div>`
+      : `<div><small>DATA CONTROL · ${isPublicEdition ? "PUBLIC" : "PERSONAL"}</small><b>Your SafarMa data belongs to you</b><p>This edition's browser data is isolated from the other edition. Export before clearing the browser or changing devices.</p></div><div class="safarma-privacy-actions"><button id="safarmaExportData" type="button">Export my data</button><button id="safarmaDeleteData" type="button" class="danger">Delete this edition's data</button></div>`;
     qs("#safarmaExportData")?.addEventListener("click", exportData);
     qs("#safarmaDeleteData")?.addEventListener("click", deleteData);
   }
@@ -235,10 +234,7 @@
 
   function showDeletionReceipt() {
     if (new URLSearchParams(location.search).get("deleted") !== "1") return;
-    setTimeout(() => showToast(
-      isFa() ? "اطلاعات SafarMa از دستگاه و هویت متصل حذف شد." : "SafarMa data was removed from this device and connected identity.",
-      "success"
-    ), 500);
+    setTimeout(() => showToast(isFa() ? "اطلاعات این نسخه SafarMa حذف شد." : "This SafarMa edition's data was removed.", "success"), 500);
   }
 
   function boot() {
