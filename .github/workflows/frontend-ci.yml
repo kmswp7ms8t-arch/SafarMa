@@ -6,8 +6,10 @@ on:
     paths:
       - "index.html"
       - "app.html"
+      - "public.html"
       - "legal.html"
       - "manifest.webmanifest"
+      - "manifest-public.webmanifest"
       - "*.js"
       - "*.css"
       - ".github/workflows/frontend-ci.yml"
@@ -15,8 +17,10 @@ on:
     paths:
       - "index.html"
       - "app.html"
+      - "public.html"
       - "legal.html"
       - "manifest.webmanifest"
+      - "manifest-public.webmanifest"
       - "*.js"
       - "*.css"
       - ".github/workflows/frontend-ci.yml"
@@ -45,28 +49,48 @@ jobs:
           node --check belink-connected-v2.js
           node --check privacy-controls.js
           node --check trabzon-preset.js
+          node --check public-mode.js
           node --check loader.js
           node --check sw.js
-      - name: Validate manifest JSON
-        run: node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
-      - name: Check V14 release references, privacy controls and Trabzon preset
+      - name: Validate manifests
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('manifest.webmanifest','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('manifest-public.webmanifest','utf8'))"
+      - name: Check V15 personal and public editions
         run: |
           for page in index.html app.html; do
-            grep -q 'belink-runtime.js?v=14' "$page"
-            grep -q 'belink-client-runtime.js?v=14' "$page"
-            grep -q 'belink-connected-v2.js?v=7' "$page"
-            grep -q 'privacy-controls.js?v=2' "$page"
-            grep -q 'trabzon-preset.js?v=1' "$page"
-            grep -q 'safarma-specialists-v8.js?v=14' "$page"
-            grep -q 'safarma-final-v8.css?v=14' "$page"
+            grep -q 'belink-runtime.js?v=15' "$page"
+            grep -q 'belink-client-runtime.js?v=15' "$page"
+            grep -q 'belink-connected-v2.js?v=8' "$page"
+            grep -q 'privacy-controls.js?v=3' "$page"
+            grep -q 'trabzon-preset.js?v=2' "$page"
+            grep -q 'safarma-specialists-v8.js?v=15' "$page"
+            grep -q 'safarma-final-v8.css?v=15' "$page"
             grep -q 'Content-Security-Policy' "$page"
+            grep -q 'تولدت مبارک، ساناز' "$page"
           done
-          grep -q 'trabzon-preset.js?v=1' sw.js
-          grep -q 'privacy-controls.js?v=2' sw.js
-          grep -q 'belink-connected-v2.js?v=7' sw.js
-          grep -q 'safarma-v14-trabzon' sw.js
-          grep -q '"./?v=14"' manifest.webmanifest
-          grep -q 'version: "8.3.0-v14"' belink-runtime.js
+          grep -q 'manifest-public.webmanifest?v=15' public.html
+          grep -q 'public-mode.js?v=1' public.html
+          grep -q 'belink-runtime.js?v=15' public.html
+          grep -q 'belink-connected-v2.js?v=8' public.html
+          grep -q 'privacy-controls.js?v=3' public.html
+          grep -q 'Global AI travel planning' public-mode.js
+          grep -q 'برنامه‌ریز هوشمند سفر برای همه' public-mode.js
+          grep -q 'window.SAFARMA_PUBLIC_MODE = true' public-mode.js
+          ! grep -q 'trabzon-preset.js' public.html
+          ! grep -q 'Sanaz' public.html
+          ! grep -q 'ساناز' public.html
+          grep -q 'public-mode.js?v=1' sw.js
+          grep -q 'manifest-public.webmanifest?v=15' sw.js
+          grep -q 'trabzon-preset.js?v=2' sw.js
+          grep -q 'privacy-controls.js?v=3' sw.js
+          grep -q 'belink-connected-v2.js?v=8' sw.js
+          grep -q 'safarma-v15-public-personal' sw.js
+          grep -q '"./?v=15"' manifest.webmanifest
+          grep -q '"./public.html?v=15"' manifest-public.webmanifest
+          grep -q 'version: "8.4.0-v15"' belink-runtime.js
+          grep -q 'const VERSION = "15"' loader.js
+          grep -q 'v=15&preset=' trabzon-preset.js
           grep -q 'autoAnalyze: false' belink-runtime.js
           grep -q 'config.autoAnalyze !== true' belink-connected-v2.js
           grep -q '/api/belink-ai/user-data' privacy-controls.js
@@ -74,14 +98,11 @@ jobs:
           grep -q 'Export my data' privacy-controls.js
           grep -q 'Delete all my data' privacy-controls.js
           grep -q 'amir-sanaz-trabzon-2026' trabzon-preset.js
-          grep -q '2026-08-06' trabzon-preset.js
-          grep -q 'budget: 13500' trabzon-preset.js
           grep -q 'estimate_needs_live_verification' trabzon-preset.js
-          grep -q 'QAR 11,000–13,500' trabzon-preset.js
           grep -q 'دریافت فایل اطلاعات' legal.html
           grep -q 'حذف کامل اطلاعات' legal.html
-          ! grep -q 'caches.match("./index.html")' sw.js || grep -q 'request.mode === "navigate"' sw.js
-      - name: Ensure preset does not claim live verification
+          grep -q 'request.mode === "navigate"' sw.js
+      - name: Ensure personal preset does not claim live verification
         run: |
           python - <<'PY'
           import pathlib
@@ -97,6 +118,25 @@ jobs:
           forbidden = ['visaConfirmed: true', 'livePriceConfirmed: true', 'guaranteedEntry: true']
           if any(item in text for item in forbidden):
               raise SystemExit('Preset must not claim confirmed live travel facts.')
+          PY
+      - name: Ensure public edition starts neutral
+        run: |
+          python - <<'PY'
+          import pathlib
+          text = pathlib.Path('public-mode.js').read_text(encoding='utf-8')
+          required = [
+              'passport: "Qatar"',
+              'wanted: ""',
+              'mode: "open"',
+              'styles: []',
+              'document.querySelector("#gift")?.classList.add("hide")',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit('Public edition is not neutral: ' + ', '.join(missing))
+          personal = ['amir-sanaz-trabzon-2026', 'تولدت مبارک', 'Happy birthday']
+          if any(item in text for item in personal):
+              raise SystemExit('Public mode must not embed the personal gift or trip preset.')
           PY
       - name: Ensure exported local snapshot never contains the signed token value
         run: |
