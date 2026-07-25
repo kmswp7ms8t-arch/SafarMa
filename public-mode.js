@@ -76,6 +76,10 @@
       eyebrow.textContent = isFa() ? "برنامه‌ریز هوشمند سفر برای همه" : "Global AI travel planning";
     }
 
+    document.querySelectorAll('a[href="./plans.html"]').forEach((link) => {
+      link.setAttribute("href", "./pricing.html");
+    });
+
     const preset = document.querySelector("#trabzonPresetButton");
     if (preset && params.get("showPersonalPreset") !== "1") preset.remove();
   }
