@@ -53,7 +53,6 @@ class MemoryStore:
 
     def _init_schema(self) -> None:
         with self._lock, self._connect() as connection:
-            # Tables must be created or migrated before indexes reference new columns.
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS preferences (
                     user_id TEXT PRIMARY KEY,
@@ -78,15 +77,10 @@ class MemoryStore:
                     updated_at TEXT NOT NULL
                 );
             """)
-
-            # RC2 conversations did not have a user_id column. Existing rows are
-            # deliberately quarantined under `legacy`; no new anonymous client can
-            # read them without a deliberate administrative migration.
             if "user_id" not in self._columns(connection, "conversations"):
                 connection.execute(
                     "ALTER TABLE conversations ADD COLUMN user_id TEXT NOT NULL DEFAULT 'legacy'"
                 )
-
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_trips_user_created ON trips(user_id, created_at DESC)"
             )
@@ -133,7 +127,7 @@ class MemoryStore:
         return trip_id
 
     def list_trips(self, user_id: str, limit: int = 30) -> list[dict[str, Any]]:
-        safe_limit = max(1, min(limit, 100))
+        safe_limit = max(1, min(limit, 1000))
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT * FROM trips WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
@@ -150,6 +144,34 @@ class MemoryStore:
             }
             for row in rows
         ]
+
+    def list_sessions(self, user_id: str, limit: int = 1000) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(limit, 1000))
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?",
+                (user_id, safe_limit),
+            ).fetchall()
+        return [
+            {
+                "session_id": row["session_id"],
+                "profile": json.loads(row["profile_json"]),
+                "decision": json.loads(row["decision_json"]) if row["decision_json"] else None,
+                "messages": json.loads(row["messages_json"]),
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def export_user_data(self, user_id: str) -> dict[str, Any]:
+        return {
+            "format": "safarma-user-data-v1",
+            "exported_at": utc_now(),
+            "anonymous_client_id": user_id,
+            "preferences": self.get_preferences(user_id).model_dump(),
+            "trips": self.list_trips(user_id, 1000),
+            "conversations": self.list_sessions(user_id, 1000),
+        }
 
     def set_trip_feedback(self, trip_id: str, status: str, user_id: str) -> bool:
         with self._lock, self._connect() as connection:
@@ -196,10 +218,7 @@ class MemoryStore:
                     (session_id,),
                 ).fetchone()
                 if owner and owner["user_id"] != user_id:
-                    # Never let one anonymous client overwrite or take ownership of
-                    # another client's conversation, even if a session id leaks.
                     identifier = uuid.uuid4().hex
-
             connection.execute(
                 """INSERT INTO conversations(session_id, user_id, profile_json, decision_json, messages_json, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -226,8 +245,13 @@ class MemoryStore:
             )
         return cursor.rowcount > 0
 
-    def delete_all_user_data(self, user_id: str) -> None:
+    def delete_all_user_data(self, user_id: str) -> dict[str, int]:
         with self._lock, self._connect() as connection:
-            connection.execute("DELETE FROM preferences WHERE user_id = ?", (user_id,))
-            connection.execute("DELETE FROM trips WHERE user_id = ?", (user_id,))
-            connection.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
+            preferences = connection.execute("DELETE FROM preferences WHERE user_id = ?", (user_id,)).rowcount
+            trips = connection.execute("DELETE FROM trips WHERE user_id = ?", (user_id,)).rowcount
+            conversations = connection.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,)).rowcount
+        return {
+            "preferences": max(0, preferences),
+            "trips": max(0, trips),
+            "conversations": max(0, conversations),
+        }
