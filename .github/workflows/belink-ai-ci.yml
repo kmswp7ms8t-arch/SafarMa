@@ -81,7 +81,36 @@ jobs:
         with:
           context: ./belink-ai-v2/backend
           file: ./belink-ai-v2/backend/Dockerfile
+          load: true
           push: false
           tags: safarma-belink-ai:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Run production image as the non-root service user
+        run: |
+          set -euo pipefail
+          docker run -d --name safarma-ci -p 8422:8421 \
+            -e BELINK_AI_DATABASE=/tmp/ci.sqlite3 \
+            -e BELINK_SESSION_SECRET=ci-docker-session-secret \
+            -e BELINK_REQUIRE_SESSION_SECRET=true \
+            -e BELINK_REQUIRE_AI=false \
+            -e BELINK_ENV=production \
+            safarma-belink-ai:ci
+          trap 'docker logs safarma-ci || true; docker rm -f safarma-ci || true' EXIT
+
+          test "$(docker exec safarma-ci id -u)" = "10001"
+
+          for attempt in $(seq 1 50); do
+            if curl --fail --silent --show-error http://127.0.0.1:8422/ready > /tmp/ready.json; then
+              python - <<'PY'
+          import json
+          payload = json.load(open('/tmp/ready.json', encoding='utf-8'))
+          assert payload['status'] == 'ready', payload
+          assert payload['database'] is True, payload
+          PY
+              exit 0
+            fi
+            sleep 0.5
+          done
+          echo "Container did not become ready" >&2
+          exit 1
