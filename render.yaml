@@ -6,7 +6,7 @@ services:
     region: frankfurt
     dockerfilePath: ./belink-ai-v2/backend/Dockerfile
     dockerContext: ./belink-ai-v2/backend
-    dockerCommand: python main.py
+    dockerCommand: /app/.venv/bin/python main.py
     healthCheckPath: /ready
     autoDeployTrigger: commit
     envVars:
