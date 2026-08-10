@@ -30,6 +30,7 @@ curl http://127.0.0.1:8421/ready
 
 - `POST /api/belink-ai/analyze`
 - `POST /api/belink-ai/chat`
+- `POST /api/belink-ai/imagine` (Grok Imagine; requires the server-side `XAI_API_KEY`)
 - `GET|PUT|DELETE /api/belink-ai/memory`
 - `GET /api/belink-ai/trips`
 - `PUT /api/belink-ai/trips/{id}/feedback`
@@ -46,6 +47,7 @@ curl http://127.0.0.1:8421/ready
 
 1. Deploy the backend container.
 2. Store `OPENAI_API_KEY` as a server secret.
-3. Set `BELINK_CORS_ORIGINS` to the exact frontend origin.
-4. Set the public backend URL in the frontend runtime config.
-5. Keep GitHub Pages as a static frontend only.
+3. Store `XAI_API_KEY` as a server secret to enable the image studio; never expose it to the browser.
+4. Set `BELINK_CORS_ORIGINS` to the exact frontend origin.
+5. Set the public backend URL in the frontend runtime config.
+6. Keep GitHub Pages as a static frontend only.

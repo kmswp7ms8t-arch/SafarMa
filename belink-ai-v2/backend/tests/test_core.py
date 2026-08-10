@@ -109,6 +109,7 @@ def test_signed_client_token_round_trip(monkeypatch):
 def test_health_ready_analyze_and_chat(tmp_path, monkeypatch):
     client = build_client(tmp_path, monkeypatch)
     assert client.get("/health").status_code == 200
+    assert client.get("/health").json()["imagine_connected"] is False
     assert client.get("/ready").status_code == 200
     analyzed_response = client.post("/api/belink-ai/analyze", json=profile().model_dump())
     assert analyzed_response.status_code == 200
@@ -124,6 +125,37 @@ def test_health_ready_analyze_and_chat(tmp_path, monkeypatch):
     assert answer.status_code == 200
     assert answer.json()["session_id"] == analyzed["session_id"]
     assert answer.json()["client_token"] == analyzed["client_token"]
+
+
+def test_imagine_requires_server_configuration(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    response = client.post("/api/belink-ai/imagine", json={"prompt": "Trabzon at golden hour"})
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Grok Imagine is not configured"
+
+
+def test_imagine_returns_provider_image_without_exposing_key(tmp_path, monkeypatch):
+    client = build_client(tmp_path, monkeypatch)
+    monkeypatch.setenv("XAI_API_KEY", "private-test-key")
+    import main
+
+    async def fake_generate(prompt):
+        assert prompt == "A cinematic view of Trabzon"
+        return {
+            "image_url": "https://images.example.test/generated.png",
+            "revised_prompt": prompt,
+        }
+
+    monkeypatch.setattr(main, "generate_image", fake_generate)
+    response = client.post(
+        "/api/belink-ai/imagine",
+        json={"prompt": "A cinematic view of Trabzon"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["image_url"] == "https://images.example.test/generated.png"
+    assert payload["client_token"].startswith("b1.")
+    assert "private-test-key" not in response.text
 
 
 def test_private_endpoints_require_valid_client(tmp_path, monkeypatch):
