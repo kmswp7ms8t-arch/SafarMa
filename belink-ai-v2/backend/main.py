@@ -24,8 +24,9 @@ from auth import (
     validate_client_token,
 )
 from memory import MemoryStore, PrivatePreferences, TripFeedback
+from imagine import ImagineError, generate_image
 
-SERVICE_VERSION = "0.4.0"
+SERVICE_VERSION = "0.5.0"
 DEFAULT_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080"
 logger = logging.getLogger("belink-ai")
 
@@ -75,6 +76,16 @@ class ChatResponse(BaseModel):
     client_token: str
     mode: str
     answer: BelinkChatAnswer
+
+
+class ImagineRequest(BaseModel):
+    prompt: str = Field(min_length=3, max_length=1000)
+
+
+class ImagineResponse(BaseModel):
+    client_token: str
+    image_url: str
+    revised_prompt: str
 
 
 app = FastAPI(
@@ -150,6 +161,7 @@ def health() -> dict[str, Any]:
         "persistent_session_secret": has_persistent_session_secret(),
         "data_export": True,
         "data_deletion": True,
+        "imagine_connected": bool(os.getenv("XAI_API_KEY")),
     }
 
 
@@ -223,6 +235,19 @@ async def chat(
     ])
     session_id = memory.save_session(profile, decision, history, identity.client_id, payload.session_id)
     return ChatResponse(session_id=session_id, client_token=identity.token, mode=mode, answer=answer)
+
+
+@app.post("/api/belink-ai/imagine", response_model=ImagineResponse, dependencies=[Depends(rate_limit)])
+async def imagine(
+    payload: ImagineRequest,
+    identity: ClientIdentity = Depends(issue_or_validate_client),
+) -> ImagineResponse:
+    try:
+        image = await generate_image(payload.prompt.strip())
+    except ImagineError as exc:
+        status = 503 if not os.getenv("XAI_API_KEY") else 502
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    return ImagineResponse(client_token=identity.token, **image)
 
 
 @app.get("/api/belink-ai/memory", response_model=PrivatePreferences, dependencies=[Depends(rate_limit)])
